@@ -3,7 +3,7 @@ import os from 'node:os';
 
 export const isDev = dev();
 
-export const OFFICIAL_CLOUD_SERVER = process.env.OFFICIAL_CLOUD_SERVER || 'https://lobechat.com';
+export const OFFICIAL_CLOUD_SERVER = process.env.OFFICIAL_CLOUD_SERVER || 'https://pho.chat';
 
 export const isMac = macOS();
 export const isWindows = windows();

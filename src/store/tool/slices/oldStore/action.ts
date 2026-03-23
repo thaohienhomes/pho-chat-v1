@@ -109,7 +109,7 @@ export const createPluginStoreSlice: StateCreator<
 
       // Don't show notification for auth errors — handled at app level, prevents notification spam
       const isAuthError =
-        err.message === 'UNAUTHORIZED' || (err as any)?.data?.code === 'UNAUTHORIZED';
+        (err.message as string) === 'UNAUTHORIZED' || (err as any)?.data?.code === 'UNAUTHORIZED';
       if (!isAuthError) {
         notification.error({
           description: t(`error.${err.message}`, { ns: 'plugin' }),
@@ -162,7 +162,7 @@ export const createPluginStoreSlice: StateCreator<
 
       // Don't show notification for auth errors — handled at app level, prevents notification spam
       const isAuthError =
-        err.message === 'UNAUTHORIZED' || (err as any)?.data?.code === 'UNAUTHORIZED';
+        (err.message as string) === 'UNAUTHORIZED' || (err as any)?.data?.code === 'UNAUTHORIZED';
       if (!isAuthError) {
         notification.error({
           description: t(`error.${err.message}`, { ns: 'plugin' }),

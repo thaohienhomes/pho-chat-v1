@@ -9,5 +9,5 @@ export const useCheckPluginsIsInstalled = (plugins: string[]) => {
   const isLogin = useUserStore(authSelectors.isLogin);
   const checkPluginsIsInstalled = useToolStore((s) => s.useCheckPluginsIsInstalled);
 
-  checkPluginsIsInstalled(isDBInited && isLogin, plugins);
+  checkPluginsIsInstalled(!!isDBInited && !!isLogin, plugins);
 };

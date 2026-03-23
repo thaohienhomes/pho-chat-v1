@@ -97,19 +97,42 @@ const nextConfig: NextConfig = {
         key: 'x-robots-tag',
         value: 'all',
       },
+      {
+        key: 'X-Frame-Options',
+        value: 'DENY',
+      },
+      {
+        key: 'X-Content-Type-Options',
+        value: 'nosniff',
+      },
+      {
+        key: 'Referrer-Policy',
+        value: 'strict-origin-when-cross-origin',
+      },
+      {
+        key: 'X-XSS-Protection',
+        value: '0',
+      },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=()',
+      },
     ];
 
     if (shouldUseCSP) {
-      securityHeaders.push(
-        {
-          key: 'X-Frame-Options',
-          value: 'DENY',
-        },
-        {
-          key: 'Content-Security-Policy',
-          value: "frame-ancestors 'none';",
-        },
-      );
+      securityHeaders.push({
+        key: 'Content-Security-Policy',
+        value: [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.pho.chat https://cdn.clerk.com https://www.googletagmanager.com https://va.vercel-scripts.com",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: blob: https:",
+          "font-src 'self' data:",
+          "connect-src 'self' https://clerk.pho.chat https://cdn.clerk.com https://*.clerk.accounts.dev wss:",
+          "frame-src 'self' https://clerk.pho.chat https://challenges.cloudflare.com",
+          "frame-ancestors 'none'",
+        ].join('; '),
+      });
     }
 
     return [

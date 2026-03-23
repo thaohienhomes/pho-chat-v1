@@ -178,7 +178,7 @@ const ConnectionMode = memo<ConnectionModeProps>(({ setIsOpen, setWaiting }) => 
                       setUrlError(validateUrl(newUrl));
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    placeholder="https://your-lobechat.com"
+                    placeholder="https://your-pho.chat"
                     status={urlError ? 'error' : undefined}
                     value={selfHostedUrl}
                   />
