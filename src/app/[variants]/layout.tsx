@@ -1,7 +1,6 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ThemeAppearance } from 'antd-style';
 import { ResolvingViewport } from 'next';
-import dynamic from 'next/dynamic';
 import Script from 'next/script';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { ReactNode } from 'react';
@@ -10,6 +9,7 @@ import { isRtlLang } from 'rtl-detect';
 import Analytics from '@/components/Analytics';
 import { DEFAULT_LANG } from '@/const/locale';
 import { isDesktop } from '@/const/version';
+import PWAInstall from '@/features/PWAInstall';
 import AuthProvider from '@/layout/AuthProvider';
 import GlobalProvider from '@/layout/GlobalProvider';
 // VoiceSupport temporarily disabled for performance — Feb 2026
@@ -17,8 +17,6 @@ import GlobalProvider from '@/layout/GlobalProvider';
 import { Locales } from '@/locales/resources';
 import { DynamicLayoutProps } from '@/types/next';
 import { RouteVariants } from '@/utils/server/routeVariants';
-
-const PWAInstall = dynamic(() => import('@/features/PWAInstall'), { ssr: false });
 
 // Lifetime banner temporarily hidden — pending copy/pricing review
 // const NewYearLifetimeBanner = nextDynamic(
