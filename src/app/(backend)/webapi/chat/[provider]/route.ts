@@ -430,6 +430,29 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       }
       const modelTier = getModelTier(data.model);
 
+      // ============  1.5. Per-request input token cap  ============ //
+      // Rough estimation: ~4 chars per token. Prevents single expensive requests.
+      const INPUT_TOKEN_CAP_BY_TIER: Record<number, number> = { 1: 16_000, 2: 64_000, 3: 200_000 };
+      const tokenCap = INPUT_TOKEN_CAP_BY_TIER[modelTier] || 16_000;
+      const estimatedInputChars =
+        data.messages?.reduce((acc, msg) => acc + String(msg.content || '').length, 0) || 0;
+      const estimatedInputTokens = Math.ceil(estimatedInputChars / 4);
+
+      if (estimatedInputTokens > tokenCap) {
+        console.warn(
+          `🚫 Input token cap exceeded: ~${estimatedInputTokens} tokens > ${tokenCap} cap ` +
+            `(Tier ${modelTier}, User: ${jwtPayload.userId})`,
+        );
+        return createErrorResponse(AgentRuntimeErrorType.ExceededContextWindow, {
+          error: {
+            message:
+              `Input quá dài cho gói hiện tại (~${estimatedInputTokens.toLocaleString()} tokens, ` +
+              `giới hạn ${tokenCap.toLocaleString()}). Vui lòng rút ngắn tin nhắn hoặc nâng cấp gói.`,
+          },
+          provider: 'pho-chat',
+        });
+      }
+
       console.log(`[Tier Check] Model: ${data.model}, Tier: ${modelTier}, Plan: ${userPlanId}`);
 
       const tierAccess = await checkTierAccess(jwtPayload.userId, modelTier, userPlanId);
