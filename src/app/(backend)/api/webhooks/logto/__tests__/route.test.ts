@@ -35,9 +35,9 @@ interface UserDataUpdatedEvent {
 const userDataUpdatedEvent: UserDataUpdatedEvent = {
   createdAt: '2024-09-07T08:29:09.381Z',
   data: {
+    applicationId: 'appid',
     avatar: null,
     createdAt: 1_725_440_405_556,
-    applicationId: 'appid',
     customData: {},
     id: 'uid',
     identities: {},

@@ -2,21 +2,27 @@
 
 ## Objective
 
-Tối ưu Lighthouse performance score trên production (pho.chat) — hiện tại Mobile: 50, Desktop: 34.
+Tối ưu Lighthouse performance score trên production (pho.chat).
 Codebase: Next.js 15, React 19, TypeScript, Vercel deployment.
-Target: Mobile ≥ 70, Desktop ≥ 70.
+Target: Mobile ≥ 80, Desktop ≥ 90. Best Practices ≥ 90.
 
-## Current Production Lighthouse Scores (pho.chat)
-- Mobile: 50 (FCP 0.9s ✅, LCP 1.2s ✅, TBT 3200ms ❌, CLS 0.225 ⚠️, SI 12.2s ❌)
-- Desktop: 34 (FCP 0.3s ✅, LCP 12.7s ❌, TBT 3940ms ❌, CLS 0.069 ✅, SI 9.7s ❌)
+## Current Production Lighthouse Scores (pho.chat) — 2026-03-18
 
-## Key Bottlenecks
-1. **TBT ~3.2-3.9s** — Heavy JS execution during hydration (CSS-in-JS antd-style, 70+ AI providers, Zustand stores)
-2. **Desktop LCP 12.7s** — Chat interface takes too long to paint largest content
-3. **Mobile CLS 0.225** — Layout shifts during loading
-4. **Speed Index 9.7-12.2s** — Slow visual progression
+- Desktop: **93** ✅ (FCP 0.8s ✅, LCP 0.8s ✅, TBT 200ms 🟠, CLS 0 ✅, SI 1.1s ✅)
+- Mobile: needs remeasurement (estimate \~50-60 based on previous)
+- Best Practices: **77** 🟠 → target 90+
+- Accessibility: **88** 🟢
+- SEO: **92** 🟢
+
+## Key Bottlenecks (Phase 2 — after Desktop 93 achieved)
+
+1. **Mobile TBT** — Still needs measurement; likely high due to CSS-in-JS runtime on slower devices
+2. **Best Practices 77** — Review Lighthouse Best Practices audit for specific issues
+3. **Desktop TBT 200ms** — Can be reduced further (<150ms) with more store deferral
+4. **Mobile CLS** — CloudBanner placeholder may not fully fix mobile layout shifts
 
 ## Previous Optimizations (ALREADY DONE — DON'T REDO)
+
 - NormalModuleReplacementPlugin for mermaid (-2391KB) ✅
 - NormalModuleReplacementPlugin for emoji-mart (-610KB) ✅
 - DeferredStoreInitialization: React.lazy() code-split into DeferredStores.tsx ✅ (commit 979a45b0cf)
@@ -25,6 +31,7 @@ Target: Mobile ≥ 70, Desktop ≥ 70.
 - optimizePackageImports expanded — diminishing returns
 
 ### Session 2026-03-18 Optimizations
+
 1. **SideBar lazy-loaded (Desktop)** — `dynamic(() => import('./SideBar'))` in both DesktopLayoutContainer + Desktop/index.tsx. Defers Avatar, TopActions, BottomActions, PinList, @lobehub/ui SideNav and store selectors from critical path.
 2. **TitleBar lazy-loaded (Electron only)** — `isDesktop ? dynamic(...) : () => null`. Avoids bundling electron store, UpdateModal, WinControl for 100% of web users.
 3. **BANNER_HEIGHT extracted to const.ts** — Previously, importing `BANNER_HEIGHT` from `CloudBanner.tsx` pulled in ahooks, react-fast-marquee, createStyles and the entire CloudBanner module into the main chunk. Now imports from `@/features/AlertBanner/const.ts`.
@@ -35,6 +42,7 @@ Target: Mobile ≥ 70, Desktop ≥ 70.
 8. **RegisterHotkeys lazy-loaded (Desktop)** — Has no visual output, only registers keyboard handlers. Deferred from critical path.
 
 ## Architecture Context
+
 - Middleware does server-side URL rewrite (NOT client redirect): `/` → `/${variant}/`
 - GlobalProvider is an async Server Component (RSC) — CANNOT use `next/dynamic` with `ssr: false`
 - Auth: Clerk middleware
@@ -68,6 +76,7 @@ If both pass, the change is safe to deploy.
 - `src/middleware.ts` — edge middleware
 
 ## Off Limits (DON'T TOUCH)
+
 - `src/server/**` — server-side only
 - Database schemas (`packages/database/`)
 - Auth configuration (Clerk)
@@ -77,6 +86,7 @@ If both pass, the change is safe to deploy.
 ## Ideas to Explore
 
 ### Priority 1: Reduce TBT (30% of Lighthouse score weight)
+
 1. Move heavy store init to `requestIdleCallback` or `setTimeout(() => ..., 0)`
 2. Code-split heavy client components using `next/dynamic` WITHOUT `ssr: false`
 3. Defer CSS-in-JS evaluation for below-fold components
@@ -84,22 +94,26 @@ If both pass, the change is safe to deploy.
 5. Profile which scripts block the main thread in production build
 
 ### Priority 2: Fix Desktop LCP (25% weight)
+
 6. Identify LCP element on desktop — add `fetchpriority="high"` or preload
 7. Add static loading skeleton as LCP placeholder
 8. Server-render the chat page shell with static content
 9. Inline critical CSS for above-fold content
 
 ### Priority 3: Fix Mobile CLS (25% weight)
+
 10. Find and fix layout shifts — add explicit dimensions
 11. Reserve space for dynamically loaded content
 12. Avoid injecting content above existing content during load
 
 ### Priority 4: Improve Speed Index
+
 13. Optimize visual loading progression
 14. Prioritize above-fold content rendering
 15. Defer below-fold component rendering with Intersection Observer
 
 ## Constraints
+
 - Must pass TypeScript check: `bun run type-check`
 - Must pass build: `bun run build`
 - Must not remove any user-facing feature
@@ -108,6 +122,7 @@ If both pass, the change is safe to deploy.
 - Desktop (Electron) build must not be affected
 
 ## Workflow
+
 1. Analyze the render pipeline starting from `page.tsx`
 2. Make ONE targeted change
 3. Run `bun run build` to verify
