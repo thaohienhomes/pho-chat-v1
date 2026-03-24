@@ -61,7 +61,6 @@ const nextConfig: NextConfig = {
       // Added for bundle optimization — Mar 2026
       'date-fns',
       'zustand',
-      'swr',
       '@dnd-kit/core',
       '@dnd-kit/sortable',
       'i18next',
