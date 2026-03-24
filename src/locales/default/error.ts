@@ -111,12 +111,13 @@ export default {
     LocationNotSupportError:
       '很抱歉，你的所在地区不支持此模型服务，可能是由于区域限制或服务未开通。请确认当前地区是否支持使用此服务，或尝试使用切换到其他地区后重试。',
     InsufficientQuota:
-      '很抱歉，该密钥的配额(quota)已达上限，请检查账户余额是否充足，或增大密钥配额后再试',
+      'Bạn đã hết lượt sử dụng cho model này hôm nay. Vui lòng thử model khác hoặc nâng cấp gói.',
     ModelNotFound:
       '很抱歉，无法请求到相应的模型，可能是模型不存在或者没有访问权限导致，请更换 API Key 或调整访问权限后重试',
-    ExceededContextWindow: '当前请求内容超出模型可处理的长度，请减少内容量后重试',
+    ExceededContextWindow:
+      'Input quá dài cho gói hiện tại. Vui lòng rút ngắn tin nhắn hoặc nâng cấp gói.',
     QuotaLimitReached:
-      '很抱歉，当前 Token 用量或请求次数已达该密钥的配额(quota)上限，请增加该密钥的配额或稍后再试',
+      'Bạn đã hết lượt sử dụng hôm nay. Vui lòng nâng cấp gói hoặc thử lại vào ngày mai.',
     PermissionDenied: '很抱歉，你没有权限访问该服务，请检查你的密钥是否有访问权限',
     InvalidProviderAPIKey: 'API Key không chính xác hoặc trống, vui lòng kiểm tra và thử lại',
     ProviderBizError: 'Yêu cầu dịch vụ AI gặp lỗi, vui lòng thử lại sau',

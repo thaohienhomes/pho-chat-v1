@@ -303,6 +303,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
 
   let requestModel = ''; // Hoisted for catch block access
   let tierSlotAcquired = false; // Whether checkTierAccess atomically acquired a tier slot
+  let tierFallbackActive = false; // Whether plugin auto-fallback to Tier 1 is active
 
   try {
     // ============  0. Cost Optimization Setup   ============ //
@@ -471,6 +472,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
               `Rerouting plugin call from "${data.model}" → "${PLUGIN_FALLBACK_MODEL}" (Tier 1 Vercel+Gemini).`,
           );
           data.model = PLUGIN_FALLBACK_MODEL;
+          tierFallbackActive = true;
           // Re-init runtime for the fallback provider
           modelRuntime = await initModelRuntimeWithUserPayload(
             PLUGIN_FALLBACK_PROVIDER,
@@ -736,6 +738,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       const headers = new Headers(response.headers);
       headers.set('X-Pho-Provider', actualProviderUsed);
       headers.set('X-Pho-Model-ID', actualModelUsed);
+      if (tierFallbackActive) headers.set('X-Pho-Tier-Fallback', '1');
       // Ensure UTF-8 charset for Vietnamese/CJK text in streaming responses
       headers.set('Content-Type', 'text/event-stream; charset=utf-8');
 
@@ -804,6 +807,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       const headers = new Headers(response.headers);
       headers.set('X-Pho-Provider', actualProviderUsed);
       headers.set('X-Pho-Model-ID', actualModelUsed);
+      if (tierFallbackActive) headers.set('X-Pho-Tier-Fallback', '1');
       // Ensure UTF-8 charset for Vietnamese/CJK text in non-streaming responses
       headers.set('Content-Type', 'application/json; charset=utf-8');
 
