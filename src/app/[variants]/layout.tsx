@@ -1,6 +1,7 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ThemeAppearance } from 'antd-style';
 import { ResolvingViewport } from 'next';
+import dynamic from 'next/dynamic';
 import Script from 'next/script';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { ReactNode } from 'react';
@@ -9,7 +10,6 @@ import { isRtlLang } from 'rtl-detect';
 import Analytics from '@/components/Analytics';
 import { DEFAULT_LANG } from '@/const/locale';
 import { isDesktop } from '@/const/version';
-import PWAInstall from '@/features/PWAInstall';
 import AuthProvider from '@/layout/AuthProvider';
 import GlobalProvider from '@/layout/GlobalProvider';
 // VoiceSupport temporarily disabled for performance — Feb 2026
@@ -17,6 +17,8 @@ import GlobalProvider from '@/layout/GlobalProvider';
 import { Locales } from '@/locales/resources';
 import { DynamicLayoutProps } from '@/types/next';
 import { RouteVariants } from '@/utils/server/routeVariants';
+
+const PWAInstall = dynamic(() => import('@/features/PWAInstall'), { ssr: false });
 
 // Lifetime banner temporarily hidden — pending copy/pricing review
 // const NewYearLifetimeBanner = nextDynamic(
@@ -46,6 +48,16 @@ const RootLayout = async ({ children, params, modal }: RootLayoutProps) => {
     <html dir={direction} lang={locale}>
       <head>
         {/* === Critical Resource Hints — Improve FCP/LCP by parallelizing connections === */}
+        {/* HarmonyOS Sans font — preload Regular weight to eliminate FOIT and improve LCP */}
+        <link
+          as="font"
+          crossOrigin="anonymous"
+          href="https://registry.npmmirror.com/@lobehub/webfont-harmony-sans/1.0.0/files/fonts/HarmonyOS_Sans_Regular.woff2"
+          rel="preload"
+          type="font/woff2"
+        />
+        {/* Font CDN preconnect — saves DNS+TLS (~100-200ms) for font + Medium/Bold weights */}
+        <link crossOrigin="anonymous" href="https://registry.npmmirror.com" rel="preconnect" />
         {/* Clerk auth domain — loads ~200KB+ JS, preconnect saves ~200ms */}
         <link crossOrigin="anonymous" href="https://clerk.pho.chat" rel="preconnect" />
         <link href="https://clerk.pho.chat" rel="dns-prefetch" />
@@ -58,102 +70,10 @@ const RootLayout = async ({ children, params, modal }: RootLayoutProps) => {
         {/* Vercel Speed Insights */}
         <link href="https://va.vercel-scripts.com" rel="dns-prefetch" />
 
-        {/* === Global Error Handlers (Mar 2026) === */}
-        {/* 1. Stub zaloJSV2 for Zalo in-app browser */}
-        {/* 2. Suppress benign ResizeObserver loop warnings */}
-        {/* 3. Auto-reload on ChunkLoadError with multi-retry + backoff (Clerk CDN timeout fix) */}
-        {/* 4. Gracefully handle unhandled tRPC promise rejections */}
+        {/* Global error handlers: zaloJSV2 stub, btoa Unicode fix, ChunkLoadError retry, tRPC suppression */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-if(typeof window!=='undefined'){
-  // Stub zaloJSV2 with no-op methods for Zalo in-app browser
-  if(!window.zaloJSV2)window.zaloJSV2={};
-  if(typeof window.zaloJSV2.zalo_h5_event_handler!=='function'){
-    window.zaloJSV2.zalo_h5_event_handler=function(){};
-  }
-
-  // Monkey-patch btoa to handle Unicode strings (Vietnamese text)
-  var _origBtoa=window.btoa;
-  window.btoa=function(s){
-    try{return _origBtoa.call(window,s);}catch(e){
-      if(e instanceof DOMException){
-        var bytes=new TextEncoder().encode(s);
-        var bin='';for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
-        return _origBtoa.call(window,bin);
-      }
-      throw e;
-    }
-  };
-
-  // Multi-retry helper: allows up to 3 reloads with exponential backoff
-  // Tracks per-page retries to handle Clerk CDN timeouts in slow regions (VN)
-  function _chunkRetry(){
-    var MAX=3,rk='__chunk_retries';
-    try{
-      var c=parseInt(sessionStorage.getItem(rk)||'0',10);
-      if(c<MAX){
-        sessionStorage.setItem(rk,String(c+1));
-        var delay=Math.min(1000*Math.pow(2,c),8000);
-        setTimeout(function(){window.location.reload();},delay);
-        return true;
-      }
-    }catch(e){}
-    return false;
-  }
-
-  // Global error handler
-  var _origOnErr=window.onerror;
-  window.onerror=function(m,src,line,col,err){
-    // Suppress ResizeObserver noise
-    if(typeof m==='string'&&m.indexOf('ResizeObserver')!==-1)return true;
-
-    // Auto-reload on ChunkLoadError with multi-retry
-    if(err&&(err.name==='ChunkLoadError'||
-      (typeof m==='string'&&(m.indexOf('Loading chunk')!==-1||m.indexOf('Failed to fetch dynamically imported')!==-1)))){
-      if(_chunkRetry())return true;
-    }
-    // Auto-reload on Clerk script load failure (clerk.pho.chat timeout)
-    if(typeof m==='string'&&(m.indexOf('failed_to_load_clerk_js')!==-1||m.indexOf('Failed to load Clerk')!==-1)){
-      if(_chunkRetry())return true;
-    }
-    return _origOnErr?_origOnErr.apply(window,arguments):false;
-  };
-
-  // Catch unhandled promise rejections (tRPC Failed to fetch, UNAUTHORIZED)
-  window.addEventListener('unhandledrejection',function(e){
-    var r=e&&e.reason;
-    if(!r)return;
-    var msg=r.message||'';
-    // Auto-reload on chunk load promises with multi-retry
-    if(r.name==='ChunkLoadError'||msg.indexOf('Loading chunk')!==-1){
-      _chunkRetry();
-      e.preventDefault();
-      return;
-    }
-    // Auto-reload on Clerk script load failure (clerk.pho.chat timeout)
-    if(msg.indexOf('failed_to_load_clerk_js')!==-1||msg.indexOf('Failed to load Clerk')!==-1){
-      _chunkRetry();
-      e.preventDefault();
-      return;
-    }
-    // Suppress tRPC UNAUTHORIZED (expected during auth transitions)
-    if(msg==='UNAUTHORIZED'&&r.constructor&&r.constructor.name==='TRPCClientError'){
-      e.preventDefault();
-      return;
-    }
-    // Suppress transient network errors (tRPC Failed to fetch)
-    if(msg==='Failed to fetch'&&r.constructor&&r.constructor.name==='TRPCClientError'){
-      e.preventDefault();
-      return;
-    }
-  });
-
-  // Clear retry counter on successful page load (all chunks loaded OK)
-  window.addEventListener('load',function(){
-    try{sessionStorage.removeItem('__chunk_retries');}catch(e){}
-  });
-}`,
+            __html: `if(typeof window!=='undefined'){if(!window.zaloJSV2)window.zaloJSV2={};if(typeof window.zaloJSV2.zalo_h5_event_handler!=='function')window.zaloJSV2.zalo_h5_event_handler=function(){};var _b=window.btoa;window.btoa=function(s){try{return _b.call(window,s)}catch(e){if(e instanceof DOMException){var b=new TextEncoder().encode(s),r='';for(var i=0;i<b.length;i++)r+=String.fromCharCode(b[i]);return _b.call(window,r)}throw e}};function _cr(){var M=3,k='__chunk_retries';try{var c=parseInt(sessionStorage.getItem(k)||'0',10);if(c<M){sessionStorage.setItem(k,String(c+1));setTimeout(function(){location.reload()},Math.min(1e3*Math.pow(2,c),8e3));return true}}catch(e){}return false}var _oe=window.onerror;window.onerror=function(m,s,l,c,e){if(typeof m==='string'&&m.indexOf('ResizeObserver')!==-1)return true;if(e&&(e.name==='ChunkLoadError'||(typeof m==='string'&&(m.indexOf('Loading chunk')!==-1||m.indexOf('Failed to fetch dynamically')!==-1))))if(_cr())return true;if(typeof m==='string'&&(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1))if(_cr())return true;return _oe?_oe.apply(window,arguments):false};window.addEventListener('unhandledrejection',function(e){var r=e&&e.reason;if(!r)return;var m=r.message||'';if(r.name==='ChunkLoadError'||m.indexOf('Loading chunk')!==-1){_cr();e.preventDefault();return}if(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1){_cr();e.preventDefault();return}if((m==='UNAUTHORIZED'||m==='Failed to fetch')&&r.constructor&&r.constructor.name==='TRPCClientError'){e.preventDefault();return}});window.addEventListener('load',function(){try{sessionStorage.removeItem('__chunk_retries')}catch(e){}})}`,
           }}
         />
         {/* Google Site Verification */}
@@ -189,12 +109,12 @@ if(typeof window!=='undefined'){
           </GlobalProvider>
         </NuqsAdapter>
         <Analytics />
-        {/* Google tag (gtag.js) - deferred to avoid blocking LCP */}
+        {/* Google tag (gtag.js) - lazyOnload: loads during browser idle, reduces TBT */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17766075190"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
-        <Script id="gtag-init" strategy="afterInteractive">
+        <Script id="gtag-init" strategy="lazyOnload">
           {`window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
