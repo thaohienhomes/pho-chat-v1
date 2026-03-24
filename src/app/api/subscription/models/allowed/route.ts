@@ -37,13 +37,18 @@ interface AllowedModelsResponse {
 export async function GET(): Promise<NextResponse<AllowedModelsResponse>> {
   try {
     // STAGING BYPASS: Allow all models in preview/development environments for testing
+    // Requires explicit STAGING_TIER_BYPASS=true to prevent accidental production leaks
     const isPreviewEnv =
-      process.env.VERCEL_ENV === 'preview' ||
-      process.env.VERCEL_ENV === 'development' ||
-      process.env.NODE_ENV === 'development';
+      process.env.STAGING_TIER_BYPASS === 'true' &&
+      (process.env.VERCEL_ENV === 'preview' ||
+        process.env.VERCEL_ENV === 'development' ||
+        process.env.NODE_ENV === 'development');
 
     if (isPreviewEnv) {
-      pino.info('Preview/Development bypass: returning all tiers');
+      console.warn(
+        '⚠️ [STAGING BYPASS ACTIVE] Returning all tiers — STAGING_TIER_BYPASS=true, ' +
+          `VERCEL_ENV=${process.env.VERCEL_ENV}, NODE_ENV=${process.env.NODE_ENV}`,
+      );
       return NextResponse.json({
         data: {
           allowedModels: [],

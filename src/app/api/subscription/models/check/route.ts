@@ -72,10 +72,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<CheckMode
     );
 
     // PREVIEW BYPASS: Allow all models in preview/development environments for testing
+    // Requires explicit STAGING_TIER_BYPASS=true to prevent accidental production leaks
     const isPreviewEnv =
-      process.env.VERCEL_ENV === 'preview' ||
-      process.env.VERCEL_ENV === 'development' ||
-      process.env.NODE_ENV === 'development';
+      process.env.STAGING_TIER_BYPASS === 'true' &&
+      (process.env.VERCEL_ENV === 'preview' ||
+        process.env.VERCEL_ENV === 'development' ||
+        process.env.NODE_ENV === 'development');
+
+    if (isPreviewEnv) {
+      console.warn('⚠️ [STAGING BYPASS ACTIVE] model check bypass — STAGING_TIER_BYPASS=true');
+    }
 
     // Check if user can use the model (bypass in preview)
     const canAccess = isPreviewEnv
