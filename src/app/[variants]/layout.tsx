@@ -68,10 +68,10 @@ const RootLayout = async ({ children, params, modal }: RootLayoutProps) => {
         {/* Vercel Speed Insights */}
         <link href="https://va.vercel-scripts.com" rel="dns-prefetch" />
 
-        {/* Global error handlers: zaloJSV2 stub, btoa Unicode fix, ChunkLoadError retry, tRPC suppression */}
+        {/* Critical: zaloJSV2 stub must run before any JS to prevent ReferenceError */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(typeof window!=='undefined'){if(!window.zaloJSV2)window.zaloJSV2={};if(typeof window.zaloJSV2.zalo_h5_event_handler!=='function')window.zaloJSV2.zalo_h5_event_handler=function(){};var _b=window.btoa;window.btoa=function(s){try{return _b.call(window,s)}catch(e){if(e instanceof DOMException){var b=new TextEncoder().encode(s),r='';for(var i=0;i<b.length;i++)r+=String.fromCharCode(b[i]);return _b.call(window,r)}throw e}};function _cr(){var M=3,k='__chunk_retries';try{var c=parseInt(sessionStorage.getItem(k)||'0',10);if(c<M){sessionStorage.setItem(k,String(c+1));setTimeout(function(){location.reload()},Math.min(1e3*Math.pow(2,c),8e3));return true}}catch(e){}return false}var _oe=window.onerror;window.onerror=function(m,s,l,c,e){if(typeof m==='string'&&m.indexOf('ResizeObserver')!==-1)return true;if(e&&(e.name==='ChunkLoadError'||(typeof m==='string'&&(m.indexOf('Loading chunk')!==-1||m.indexOf('Failed to fetch dynamically')!==-1))))if(_cr())return true;if(typeof m==='string'&&(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1))if(_cr())return true;return _oe?_oe.apply(window,arguments):false};window.addEventListener('unhandledrejection',function(e){var r=e&&e.reason;if(!r)return;var m=r.message||'';if(r.name==='ChunkLoadError'||m.indexOf('Loading chunk')!==-1){_cr();e.preventDefault();return}if(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1){_cr();e.preventDefault();return}if((m==='UNAUTHORIZED'||m==='Failed to fetch')&&r.constructor&&r.constructor.name==='TRPCClientError'){e.preventDefault();return}});window.addEventListener('load',function(){try{sessionStorage.removeItem('__chunk_retries')}catch(e){}})}`,
+            __html: `if(typeof window!=='undefined'){if(!window.zaloJSV2)window.zaloJSV2={};if(typeof window.zaloJSV2.zalo_h5_event_handler!=='function')window.zaloJSV2.zalo_h5_event_handler=function(){}}`,
           }}
         />
         {/* Google Site Verification */}
@@ -107,6 +107,10 @@ const RootLayout = async ({ children, params, modal }: RootLayoutProps) => {
           </GlobalProvider>
         </NuqsAdapter>
         <Analytics />
+        {/* Error handlers deferred to afterInteractive to unblock HTML parsing (~1.5KB saved from head) */}
+        <Script id="error-handlers" strategy="afterInteractive">
+          {`var _b=window.btoa;window.btoa=function(s){try{return _b.call(window,s)}catch(e){if(e instanceof DOMException){var b=new TextEncoder().encode(s),r='';for(var i=0;i<b.length;i++)r+=String.fromCharCode(b[i]);return _b.call(window,r)}throw e}};function _cr(){var M=3,k='__chunk_retries';try{var c=parseInt(sessionStorage.getItem(k)||'0',10);if(c<M){sessionStorage.setItem(k,String(c+1));setTimeout(function(){location.reload()},Math.min(1e3*Math.pow(2,c),8e3));return true}}catch(e){}return false}var _oe=window.onerror;window.onerror=function(m,s,l,c,e){if(typeof m==='string'&&m.indexOf('ResizeObserver')!==-1)return true;if(e&&(e.name==='ChunkLoadError'||(typeof m==='string'&&(m.indexOf('Loading chunk')!==-1||m.indexOf('Failed to fetch dynamically')!==-1))))if(_cr())return true;if(typeof m==='string'&&(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1))if(_cr())return true;return _oe?_oe.apply(window,arguments):false};window.addEventListener('unhandledrejection',function(e){var r=e&&e.reason;if(!r)return;var m=r.message||'';if(r.name==='ChunkLoadError'||m.indexOf('Loading chunk')!==-1){_cr();e.preventDefault();return}if(m.indexOf('failed_to_load_clerk')!==-1||m.indexOf('Failed to load Clerk')!==-1){_cr();e.preventDefault();return}if((m==='UNAUTHORIZED'||m==='Failed to fetch')&&r.constructor&&r.constructor.name==='TRPCClientError'){e.preventDefault();return}});window.addEventListener('load',function(){try{sessionStorage.removeItem('__chunk_retries')}catch(e){}})`}
+        </Script>
         {/* Google tag (gtag.js) - lazyOnload: loads during browser idle, reduces TBT */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17766075190"

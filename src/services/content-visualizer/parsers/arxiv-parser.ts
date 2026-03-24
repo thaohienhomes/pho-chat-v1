@@ -2,13 +2,22 @@
  * ArXiv parser: fetches and parses ar5iv HTML or falls back to arXiv API + PDF.
  * Extracts structured sections, LaTeX equations, figures, and tables.
  */
-
 import * as cheerio from 'cheerio';
-import type { AnyNode } from 'domhandler';
 
-import type { ContentSection, ParsedContent, ParsedEquation, ParsedFigure, ParsedTable } from '../types/parsed-content';
+import type {
+  ContentSection,
+  ParsedContent,
+  ParsedEquation,
+  ParsedFigure,
+  ParsedTable,
+} from '../types/parsed-content';
 
-const ARXIV_ID_REGEX = /(?:arxiv\.org\/(?:abs|pdf|html)\/|ar5iv\.labs\.arxiv\.org\/html\/)(\d{4}\.\d{4,5}(?:v\d+)?)/i;
+// domhandler is a transitive dep of cheerio but not directly installed
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyNode = any;
+
+const ARXIV_ID_REGEX =
+  /(?:arxiv\.org\/(?:abs|pdf|html)\/|ar5iv\.labs\.arxiv\.org\/html\/)(\d{4}\.\d{4,5}(?:v\d+)?)/i;
 const AR5IV_BASE_URL = 'https://ar5iv.labs.arxiv.org/html';
 const ARXIV_API_URL = 'https://export.arxiv.org/api/query';
 
@@ -41,7 +50,10 @@ async function fetchArxivMetadata(arxivId: string): Promise<{
   const entry = $('entry').first();
   const title = entry.find('title').text().replaceAll(/\s+/g, ' ').trim();
   const abstract = entry.find('summary').text().replaceAll(/\s+/g, ' ').trim();
-  const authors = entry.find('author name').map((_i, el) => $(el).text()).get();
+  const authors = entry
+    .find('author name')
+    .map((_i, el) => $(el).text())
+    .get();
 
   return { abstract, authors, title };
 }
@@ -49,13 +61,17 @@ async function fetchArxivMetadata(arxivId: string): Promise<{
 /**
  * Parse equations from ar5iv HTML math elements.
  */
-function parseEquations($: cheerio.CheerioAPI, sectionEl: cheerio.Cheerio<AnyNode>): ParsedEquation[] {
+function parseEquations(
+  $: cheerio.CheerioAPI,
+  sectionEl: cheerio.Cheerio<AnyNode>,
+): ParsedEquation[] {
   const equations: ParsedEquation[] = [];
   let eqIndex = 0;
 
   sectionEl.find('math[alttext], .ltx_equation').each((_i, el) => {
     const mathEl = $(el);
-    const latex = mathEl.attr('alttext') || mathEl.find('math').attr('alttext') || mathEl.text().trim();
+    const latex =
+      mathEl.attr('alttext') || mathEl.find('math').attr('alttext') || mathEl.text().trim();
     if (!latex) return;
 
     const context = mathEl.parent().text().slice(0, 200).trim();
@@ -103,7 +119,11 @@ function parseTables($: cheerio.CheerioAPI, sectionEl: cheerio.Cheerio<AnyNode>)
 
   sectionEl.find('table').each((_i, el) => {
     const tableEl = $(el);
-    const caption = tableEl.closest('figure, .ltx_table').find('figcaption, .ltx_caption').text().trim();
+    const caption = tableEl
+      .closest('figure, .ltx_table')
+      .find('figcaption, .ltx_caption')
+      .text()
+      .trim();
 
     const headers: string[] = [];
     tableEl.find('thead th, thead td').each((_j, th) => {
@@ -113,9 +133,11 @@ function parseTables($: cheerio.CheerioAPI, sectionEl: cheerio.Cheerio<AnyNode>)
     const rows: string[][] = [];
     tableEl.find('tbody tr').each((_j, tr) => {
       const row: string[] = [];
-      $(tr).find('td, th').each((_k, td) => {
-        row.push($(td).text().trim());
-      });
+      $(tr)
+        .find('td, th')
+        .each((_k, td) => {
+          row.push($(td).text().trim());
+        });
       if (row.length > 0) rows.push(row);
     });
 
@@ -201,7 +223,9 @@ export async function parseArxivUrl(input: string): Promise<ParsedContent> {
   ]);
 
   if (!htmlResponse.ok) {
-    throw new Error(`ar5iv HTML fetch failed: ${htmlResponse.status}. Paper may not be available on ar5iv.`);
+    throw new Error(
+      `ar5iv HTML fetch failed: ${htmlResponse.status}. Paper may not be available on ar5iv.`,
+    );
   }
 
   const html = await htmlResponse.text();
