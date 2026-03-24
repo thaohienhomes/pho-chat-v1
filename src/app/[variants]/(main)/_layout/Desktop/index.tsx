@@ -30,7 +30,10 @@ const OnboardingModal = dynamic(() => import('@/features/Onboarding/OnboardingMo
 // TitleBar only renders in Electron desktop — lazy-load to avoid bundling electron store
 const TitleBar = isDesktop ? dynamic(() => import('@/features/ElectronTitlebar')) : () => null;
 // SideBar for non-Electron desktop path — lazy-load its subcomponents
-const SideBar = dynamic(() => import('./SideBar'));
+// Reserve exact SideNav width (58px) while loading to prevent CLS
+const SideBar = dynamic(() => import('./SideBar'), {
+  loading: () => <div style={{ height: '100%', minHeight: 640, width: 58 }} />,
+});
 // RegisterHotkeys has no visual output — lazy-load to defer hotkey hook imports
 // ssr: false required because it uses useSearchParams() via nuqs (usePinnedAgentState)
 const RegisterHotkeys = dynamic(() => import('./RegisterHotkeys'), { ssr: false });

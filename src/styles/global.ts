@@ -26,29 +26,9 @@ export default ({ token }: { prefixCls: string; token: Theme }) => css`
     color: ${token.colorText};
   }
 
-  * {
-    scrollbar-color: ${token.colorFill} transparent;
-    scrollbar-width: thin;
-
-    ::-webkit-scrollbar {
-      width: 0.75em;
-      height: 0.75em;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      border-radius: 10px;
-    }
-
-    :hover::-webkit-scrollbar-thumb {
-      border: 3px solid transparent;
-      background-color: ${token.colorText};
-      background-clip: content-box;
-    }
-
-    ::-webkit-scrollbar-track {
-      background-color: transparent;
-    }
-  }
+  /* Scrollbar styles removed — handled by AppTheme's scrollbar + scrollbarPolyfill classes
+   * which are applied to the app container and inherited by children.
+   * The previous * selector was duplicate and forced style matching on every DOM element. */
 
   /* ============================================
    * Dark Mode Text Visibility Improvements
