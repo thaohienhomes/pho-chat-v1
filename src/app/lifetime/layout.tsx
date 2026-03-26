@@ -16,6 +16,9 @@ const LifetimeRootLayout = ({ children }: PropsWithChildren) => {
   return (
     <html lang="en">
       <head>
+        {/* Preconnect for faster Google Fonts loading */}
+        <link crossOrigin="anonymous" href="https://fonts.googleapis.com" rel="preconnect" />
+        <link crossOrigin="anonymous" href="https://fonts.gstatic.com" rel="preconnect" />
         {/* Google Fonts - Inter */}
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"

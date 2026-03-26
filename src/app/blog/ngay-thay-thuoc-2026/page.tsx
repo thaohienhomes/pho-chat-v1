@@ -24,9 +24,18 @@ export default function DoctorsDayCampaignPage() {
           content="Nhân ngày Thầy Thuốc Việt Nam 27/2, Phở Chat ưu đãi gói Medical Beta — trợ lý AI y khoa chỉ 999K/năm. PubMed, ClinicalTrials, Drug Check, 10 Calculator lâm sàng."
           name="description"
         />
-        <meta content="Phở Chat, Ngày Thầy Thuốc, AI y khoa, Medical Beta, PubMed, bác sĩ Việt Nam" name="keywords" />
-        <meta content="🏥 Tri Ân Ngày Thầy Thuốc Việt Nam 27/2 — Phở Chat Medical" property="og:title" />
-        <meta content="Trợ lý AI y khoa chỉ 999K/năm. PubMed, Drug Check, 10 Clinical Calculators tích hợp sẵn." property="og:description" />
+        <meta
+          content="Phở Chat, Ngày Thầy Thuốc, AI y khoa, Medical Beta, PubMed, bác sĩ Việt Nam"
+          name="keywords"
+        />
+        <meta
+          content="🏥 Tri Ân Ngày Thầy Thuốc Việt Nam 27/2 — Phở Chat Medical"
+          property="og:title"
+        />
+        <meta
+          content="Trợ lý AI y khoa chỉ 999K/năm. PubMed, Drug Check, 10 Clinical Calculators tích hợp sẵn."
+          property="og:description"
+        />
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -469,7 +478,9 @@ export default function DoctorsDayCampaignPage() {
       </head>
 
       <div className="campaign-container">
-        <Link className="back-link" href="/">← Quay lại Phở Chat</Link>
+        <Link className="back-link" href="/">
+          ← Quay lại Phở Chat
+        </Link>
 
         {/* ===== HERO ===== */}
         <section className="hero">
@@ -482,9 +493,11 @@ export default function DoctorsDayCampaignPage() {
             Trợ Lý AI Y Khoa Chỉ Từ 83K/Tháng
           </h1>
           <p className="hero-subtitle">
-            Phở Chat Medical tích hợp sẵn <strong style={{ color: '#fff' }}>4 cơ sở dữ liệu quốc tế</strong>,{' '}
+            Phở Chat Medical tích hợp sẵn{' '}
+            <strong style={{ color: '#fff' }}>4 cơ sở dữ liệu quốc tế</strong>,{' '}
             <strong style={{ color: '#fff' }}>10 công cụ tính toán lâm sàng</strong>, và{' '}
-            <strong style={{ color: '#fff' }}>trích dẫn tự động</strong> — được thiết kế riêng cho bác sĩ, dược sĩ, và nghiên cứu sinh Việt Nam.
+            <strong style={{ color: '#fff' }}>trích dẫn tự động</strong> — được thiết kế riêng cho
+            bác sĩ, dược sĩ, và nghiên cứu sinh Việt Nam.
           </p>
           <div className="hero-price-box">
             <div className="hero-price-old">2.400.000đ/năm</div>
@@ -497,19 +510,34 @@ export default function DoctorsDayCampaignPage() {
         <div className="stats-row">
           <div className="stat-item">
             <div className="stat-number">4</div>
-            <div className="stat-label">Cơ sở dữ liệu<br />y khoa quốc tế</div>
+            <div className="stat-label">
+              Cơ sở dữ liệu
+              <br />y khoa quốc tế
+            </div>
           </div>
           <div className="stat-item">
             <div className="stat-number">10</div>
-            <div className="stat-label">Công cụ tính toán<br />lâm sàng</div>
+            <div className="stat-label">
+              Công cụ tính toán
+              <br />
+              lâm sàng
+            </div>
           </div>
           <div className="stat-item">
             <div className="stat-number">500K</div>
-            <div className="stat-label">Phở Points<br />mỗi tháng</div>
+            <div className="stat-label">
+              Phở Points
+              <br />
+              mỗi tháng
+            </div>
           </div>
           <div className="stat-item">
             <div className="stat-number">100%</div>
-            <div className="stat-label">Hỗ trợ<br />tiếng Việt</div>
+            <div className="stat-label">
+              Hỗ trợ
+              <br />
+              tiếng Việt
+            </div>
           </div>
         </div>
 
@@ -525,7 +553,9 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">📚</span>
               <div>
                 <div className="feature-name">PubMed — 36 triệu bài báo</div>
-                <div className="feature-desc">Tìm kiếm thông minh với MeSH terms, phân trang, link DOI/PMID trực tiếp</div>
+                <div className="feature-desc">
+                  Tìm kiếm thông minh với MeSH terms, phân trang, link DOI/PMID trực tiếp
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -533,7 +563,9 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">🌐</span>
               <div>
                 <div className="feature-name">OpenAlex — 250 triệu bài</div>
-                <div className="feature-desc">Mở rộng tìm kiếm ra toàn bộ lĩnh vực khoa học, kỹ thuật y sinh</div>
+                <div className="feature-desc">
+                  Mở rộng tìm kiếm ra toàn bộ lĩnh vực khoa học, kỹ thuật y sinh
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -541,7 +573,9 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">🧪</span>
               <div>
                 <div className="feature-name">ClinicalTrials.gov</div>
-                <div className="feature-desc">Thử nghiệm lâm sàng đang tuyển bệnh nhân, giai đoạn I–IV</div>
+                <div className="feature-desc">
+                  Thử nghiệm lâm sàng đang tuyển bệnh nhân, giai đoạn I–IV
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -549,14 +583,17 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">💊</span>
               <div>
                 <div className="feature-name">FDA Drug Database</div>
-                <div className="feature-desc">Drug labels, cảnh báo an toàn, tương tác thuốc chính thống từ FDA</div>
+                <div className="feature-desc">
+                  Drug labels, cảnh báo an toàn, tương tác thuốc chính thống từ FDA
+                </div>
               </div>
             </div>
           </div>
 
           <div className="prompt-box">
             <div className="prompt-label">💬 Ví dụ prompt</div>
-            &quot;Tìm 10 bài meta-analysis mới nhất về metformin trong đái tháo đường type 2, kèm kiểm tra thử nghiệm lâm sàng đang tuyển bệnh nhân&quot;
+            &quot;Tìm 10 bài meta-analysis mới nhất về metformin trong đái tháo đường type 2, kèm
+            kiểm tra thử nghiệm lâm sàng đang tuyển bệnh nhân&quot;
           </div>
         </div>
 
@@ -564,7 +601,9 @@ export default function DoctorsDayCampaignPage() {
         <div className="section-card">
           <div className="section-icon">✍️</div>
           <h2 className="section-title">Viết Bài Khoa Học Nhanh Gấp 3 Lần</h2>
-          <p className="section-subtitle">Citation tự động + PICO + GRADE + IMRAD — tất cả trong 1 cuộc trò chuyện</p>
+          <p className="section-subtitle">
+            Citation tự động + PICO + GRADE + IMRAD — tất cả trong 1 cuộc trò chuyện
+          </p>
 
           <div className="feature-grid">
             <div className="feature-item">
@@ -572,7 +611,9 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">📝</span>
               <div>
                 <div className="feature-name">Citation Manager</div>
-                <div className="feature-desc">PMID/DOI → APA, Vancouver, BibTeX tức thì. Không cần Zotero</div>
+                <div className="feature-desc">
+                  PMID/DOI → APA, Vancouver, BibTeX tức thì. Không cần Zotero
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -580,7 +621,10 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">🎯</span>
               <div>
                 <div className="feature-name">PICO Framework</div>
-                <div className="feature-desc">Tự động phân tích câu hỏi nghiên cứu theo Patient, Intervention, Comparison, Outcome</div>
+                <div className="feature-desc">
+                  Tự động phân tích câu hỏi nghiên cứu theo Patient, Intervention, Comparison,
+                  Outcome
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -588,7 +632,9 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">📊</span>
               <div>
                 <div className="feature-name">GRADE Evidence</div>
-                <div className="feature-desc">Đánh giá mức độ tin cậy bằng chứng: Cao → Trung bình → Thấp</div>
+                <div className="feature-desc">
+                  Đánh giá mức độ tin cậy bằng chứng: Cao → Trung bình → Thấp
+                </div>
               </div>
             </div>
             <div className="feature-item">
@@ -596,14 +642,17 @@ export default function DoctorsDayCampaignPage() {
               <span className="feature-emoji">🇻🇳</span>
               <div>
                 <div className="feature-name">Tổng hợp tiếng Việt</div>
-                <div className="feature-desc">Hỏi tiếng Việt, dữ liệu quốc tế, kết quả tổng hợp tiếng Việt</div>
+                <div className="feature-desc">
+                  Hỏi tiếng Việt, dữ liệu quốc tế, kết quả tổng hợp tiếng Việt
+                </div>
               </div>
             </div>
           </div>
 
           <div className="prompt-box">
             <div className="prompt-label">💬 Ví dụ prompt</div>
-            &quot;Viết literature review tổng hợp về statin trong dự phòng tim mạch ở bệnh nhân đái tháo đường, đánh giá evidence theo GRADE, trích dẫn Vancouver&quot;
+            &quot;Viết literature review tổng hợp về statin trong dự phòng tim mạch ở bệnh nhân đái
+            tháo đường, đánh giá evidence theo GRADE, trích dẫn Vancouver&quot;
           </div>
         </div>
 
@@ -611,7 +660,9 @@ export default function DoctorsDayCampaignPage() {
         <div className="section-card">
           <div className="section-icon">🧮</div>
           <h2 className="section-title">10 Công Cụ Tính Toán Lâm Sàng — Ngay Trong Chat</h2>
-          <p className="section-subtitle">Không cần mở Google — gõ 1 câu, ra kết quả kèm diễn giải</p>
+          <p className="section-subtitle">
+            Không cần mở Google — gõ 1 câu, ra kết quả kèm diễn giải
+          </p>
 
           <table className="comparison-table">
             <thead>
@@ -621,16 +672,66 @@ export default function DoctorsDayCampaignPage() {
               </tr>
             </thead>
             <tbody>
-              <tr><td><strong>eGFR (CKD-EPI)</strong></td><td>Đánh giá chức năng thận → chỉnh liều thuốc</td></tr>
-              <tr><td><strong>CrCl (Cockcroft-Gault)</strong></td><td>Clearance creatinine → chỉnh liều kháng sinh</td></tr>
-              <tr><td><strong>MELD / MELD-Na</strong></td><td>Mức độ nặng bệnh gan → ưu tiên ghép gan</td></tr>
-              <tr><td><strong>CHA₂DS₂-VASc</strong></td><td>Nguy cơ đột quỵ trong rung nhĩ → chỉ định kháng đông</td></tr>
-              <tr><td><strong>Wells Score</strong></td><td>Nguy cơ huyết khối tĩnh mạch sâu (DVT/PE)</td></tr>
-              <tr><td><strong>Glasgow Coma Scale</strong></td><td>Đánh giá ý thức trong cấp cứu</td></tr>
-              <tr><td><strong>APGAR Score</strong></td><td>Đánh giá sơ sinh tại phòng sinh</td></tr>
-              <tr><td><strong>BMI</strong></td><td>Đánh giá thể trạng dinh dưỡng</td></tr>
-              <tr><td><strong>Corrected Na</strong></td><td>Na hiệu chỉnh khi tăng đường huyết</td></tr>
-              <tr><td><strong>NNT</strong></td><td>Nghiên cứu: số cần điều trị để ngăn 1 biến cố</td></tr>
+              <tr>
+                <td>
+                  <strong>eGFR (CKD-EPI)</strong>
+                </td>
+                <td>Đánh giá chức năng thận → chỉnh liều thuốc</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>CrCl (Cockcroft-Gault)</strong>
+                </td>
+                <td>Clearance creatinine → chỉnh liều kháng sinh</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>MELD / MELD-Na</strong>
+                </td>
+                <td>Mức độ nặng bệnh gan → ưu tiên ghép gan</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>CHA₂DS₂-VASc</strong>
+                </td>
+                <td>Nguy cơ đột quỵ trong rung nhĩ → chỉ định kháng đông</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Wells Score</strong>
+                </td>
+                <td>Nguy cơ huyết khối tĩnh mạch sâu (DVT/PE)</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Glasgow Coma Scale</strong>
+                </td>
+                <td>Đánh giá ý thức trong cấp cứu</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>APGAR Score</strong>
+                </td>
+                <td>Đánh giá sơ sinh tại phòng sinh</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>BMI</strong>
+                </td>
+                <td>Đánh giá thể trạng dinh dưỡng</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Corrected Na</strong>
+                </td>
+                <td>Na hiệu chỉnh khi tăng đường huyết</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>NNT</strong>
+                </td>
+                <td>Nghiên cứu: số cần điều trị để ngăn 1 biến cố</td>
+              </tr>
             </tbody>
           </table>
 
@@ -680,8 +781,12 @@ export default function DoctorsDayCampaignPage() {
                 <td style={{ color: '#22c55e', fontWeight: 600 }}>1 phút</td>
               </tr>
               <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)' }}>
-                <td><strong>Tổng cộng</strong></td>
-                <td><strong>~3 giờ</strong></td>
+                <td>
+                  <strong>Tổng cộng</strong>
+                </td>
+                <td>
+                  <strong>~3 giờ</strong>
+                </td>
                 <td style={{ color: '#22c55e', fontSize: '1.05rem', fontWeight: 700 }}>~2 phút</td>
               </tr>
             </tbody>
@@ -692,63 +797,130 @@ export default function DoctorsDayCampaignPage() {
         <div className="section-card" id="demo">
           <div className="section-icon">🎬</div>
           <h2 className="section-title">Xem Demo Thực Tế — 3 Tính Năng Được Dùng Nhiều Nhất</h2>
-          <p className="section-subtitle">Không cần cài đặt — chạy ngay trong chat, hỏi bằng tiếng Việt</p>
+          <p className="section-subtitle">
+            Không cần cài đặt — chạy ngay trong chat, hỏi bằng tiếng Việt
+          </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', marginTop: '24px' }}>
             <div>
-              <div style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <div
+                style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}
+              >
                 <span style={{ fontSize: '1.3rem' }}>🔬</span>
                 <strong style={{ color: '#fff', fontSize: '1rem' }}>Tìm kiếm PubMed v2</strong>
-                <span style={{
-                  background: 'rgba(59,130,246,0.2)', borderRadius: '20px',
-                  color: '#60a5fa', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px'
-                }}>v2 MỚI</span>
+                <span
+                  style={{
+                    background: 'rgba(59,130,246,0.2)',
+                    borderRadius: '20px',
+                    color: '#60a5fa',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                  }}
+                >
+                  v2 MỚI
+                </span>
               </div>
-              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.87rem', marginBottom: '12px' }}>
+              <p
+                style={{
+                  color: 'rgba(255,255,255,0.55)',
+                  fontSize: '0.87rem',
+                  marginBottom: '12px',
+                }}
+              >
                 Phân trang, MeSH terms, link DOI clickable — hỏi tiếng Việt, kết quả 36 triệu bài
               </p>
               <img
                 alt="Demo tìm kiếm PubMed v2 - Phở Chat Medical"
+                loading="lazy"
                 src="/demos/pubmed-demo.gif"
-                style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%' }}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  width: '100%',
+                }}
               />
             </div>
 
             <div>
-              <div style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <div
+                style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}
+              >
                 <span style={{ fontSize: '1.3rem' }}>💊</span>
-                <strong style={{ color: '#fff', fontSize: '1rem' }}>Kiểm tra tương tác thuốc</strong>
-                <span style={{
-                  background: 'rgba(234,179,8,0.15)', borderRadius: '20px',
-                  color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px'
-                }}>42 THUỐC</span>
+                <strong style={{ color: '#fff', fontSize: '1rem' }}>
+                  Kiểm tra tương tác thuốc
+                </strong>
+                <span
+                  style={{
+                    background: 'rgba(234,179,8,0.15)',
+                    borderRadius: '20px',
+                    color: '#fbbf24',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                  }}
+                >
+                  42 THUỐC
+                </span>
               </div>
-              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.87rem', marginBottom: '12px' }}>
+              <p
+                style={{
+                  color: 'rgba(255,255,255,0.55)',
+                  fontSize: '0.87rem',
+                  marginBottom: '12px',
+                }}
+              >
                 Nhập tên thuốc, nhận cảnh báo tương tác + Adverse Events từ FDA database
               </p>
               <img
                 alt="Demo kiểm tra tương tác thuốc - Drug Interactions FDA"
+                loading="lazy"
                 src="/demos/drug-interactions-demo.gif"
-                style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%' }}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  width: '100%',
+                }}
               />
             </div>
 
             <div>
-              <div style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <div
+                style={{ alignItems: 'center', display: 'flex', gap: '10px', marginBottom: '10px' }}
+              >
                 <span style={{ fontSize: '1.3rem' }}>🩺</span>
                 <strong style={{ color: '#fff', fontSize: '1rem' }}>Tính toán lâm sàng</strong>
-                <span style={{
-                  background: 'rgba(34,197,94,0.15)', borderRadius: '20px',
-                  color: '#22c55e', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px'
-                }}>10 CÔNG THỨC</span>
+                <span
+                  style={{
+                    background: 'rgba(34,197,94,0.15)',
+                    borderRadius: '20px',
+                    color: '#22c55e',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                  }}
+                >
+                  10 CÔNG THỨC
+                </span>
               </div>
-              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.87rem', marginBottom: '12px' }}>
+              <p
+                style={{
+                  color: 'rgba(255,255,255,0.55)',
+                  fontSize: '0.87rem',
+                  marginBottom: '12px',
+                }}
+              >
                 eGFR, CrCl, MELD, CHA₂DS₂-VASc, Wells Score... — kết quả kèm diễn giải lâm sàng
               </p>
               <img
                 alt="Demo Clinical Calculator - eGFR, MELD, CHA2DS2-VASc"
+                loading="lazy"
                 src="/demos/clinical-calc-demo.gif"
-                style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%' }}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  width: '100%',
+                }}
               />
             </div>
           </div>
@@ -759,9 +931,12 @@ export default function DoctorsDayCampaignPage() {
         <div className="cta-section" id="register">
           <h2 className="cta-title">🏥 Nhân Ngày Thầy Thuốc Việt Nam 27/2</h2>
           <p className="cta-subtitle">
-            Tặng bạn trọn bộ trợ lý AI y khoa với giá chỉ <strong style={{ color: '#22c55e' }}>999.000đ/năm</strong>
+            Tặng bạn trọn bộ trợ lý AI y khoa với giá chỉ{' '}
+            <strong style={{ color: '#22c55e' }}>999.000đ/năm</strong>
             <br />
-            <span style={{ fontSize: '0.9rem' }}>500.000 Phở Points/tháng · Unlimited AI Tier 1 · 20 lượt Tier 2/ngày</span>
+            <span style={{ fontSize: '0.9rem' }}>
+              500.000 Phở Points/tháng · Unlimited AI Tier 1 · 20 lượt Tier 2/ngày
+            </span>
           </p>
 
           {/* 3-step visual guide */}
@@ -805,43 +980,43 @@ export default function DoctorsDayCampaignPage() {
                 🩺 Đăng Ký Medical Beta — 999K/năm
               </button>
             </SignInButton>
-            <div className="login-hint">
-              🔐 Đăng nhập nhanh bằng Google hoặc Email
-            </div>
+            <div className="login-hint">🔐 Đăng nhập nhanh bằng Google hoặc Email</div>
           </SignedOut>
 
           <div className="cta-deadline">⏰ Ưu đãi Ngày Thầy Thuốc chỉ đến hết ngày 28/02/2026</div>
           <div>
-            <Link
-              className="cta-secondary"
-              href="/"
-              onClick={() => handleCTAClick('free_trial')}
-            >
+            <Link className="cta-secondary" href="/" onClick={() => handleCTAClick('free_trial')}>
               Hoặc dùng thử miễn phí (50K points/tháng) →
             </Link>
           </div>
         </div>
 
         {/* ===== DISCLAIMER ===== */}
-        <div style={{
-          background: 'rgba(255,255,255,0.03)',
-          borderRadius: '12px',
-          color: 'rgba(255,255,255,0.4)',
-          fontSize: '0.82rem',
-          lineHeight: 1.7,
-          marginBottom: '24px',
-          padding: '20px 24px',
-          textAlign: 'center',
-        }}>
-          ⚕️ Phở Chat cung cấp công cụ tra cứu và tính toán tham khảo. Kết quả không thay thế đánh giá lâm sàng của bác sĩ.
-          <br />Luôn xác nhận kết quả với nguồn chính thức trước khi đưa ra quyết định điều trị.
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.03)',
+            borderRadius: '12px',
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: '0.82rem',
+            lineHeight: 1.7,
+            marginBottom: '24px',
+            padding: '20px 24px',
+            textAlign: 'center',
+          }}
+        >
+          ⚕️ Phở Chat cung cấp công cụ tra cứu và tính toán tham khảo. Kết quả không thay thế đánh
+          giá lâm sàng của bác sĩ.
+          <br />
+          Luôn xác nhận kết quả với nguồn chính thức trước khi đưa ra quyết định điều trị.
         </div>
 
         <footer className="footer">
           <p>
             <a href="https://pho.chat">Phở Chat</a> — Trợ lý AI thông minh cho người Việt
             <br />
-            <span style={{ fontSize: '0.78rem' }}>© 2026 Phở Chat. Chúc mừng Ngày Thầy Thuốc Việt Nam 27/2 🏥</span>
+            <span style={{ fontSize: '0.78rem' }}>
+              © 2026 Phở Chat. Chúc mừng Ngày Thầy Thuốc Việt Nam 27/2 🏥
+            </span>
           </p>
         </footer>
       </div>

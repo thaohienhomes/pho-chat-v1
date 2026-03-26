@@ -31,7 +31,7 @@ const MarkdownRender = memo<{ children?: string }>(({ children }) => {
           if (src.includes('glama.ai')) return;
 
           // eslint-disable-next-line @next/next/no-img-element
-          if (src && src.startsWith('http')) return <img src={src} {...rest} />;
+          if (src && src.startsWith('http')) return <img loading="lazy" src={src} {...rest} />;
           return;
         },
       }}

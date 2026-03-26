@@ -66,6 +66,14 @@ const nextConfig: NextConfig = {
       'i18next',
       'zod',
       'query-string',
+      // Round 3 — high-import-count packages for tree-shaking
+      'swr',
+      '@trpc/server',
+      '@lobehub/chat-plugin-sdk',
+      'react-virtuoso',
+      'use-merge-value',
+      'nanoid',
+      '@lobehub/tts',
       // Round 2 — shiki ecosystem + antd internals
       'shiki',
       '@shikijs/core',

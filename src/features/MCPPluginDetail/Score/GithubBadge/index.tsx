@@ -63,6 +63,7 @@ const GithubBadge = memo(() => {
       <img
         alt="MCP Badge"
         height={selectedStyle === 'for-the-badge' ? 28 : 20}
+        loading="lazy"
         src={styledBadgeUrl}
       />
       <Divider style={{ color: theme.colorTextDescription, fontSize: 12 }}>OR</Divider>
@@ -76,7 +77,7 @@ const GithubBadge = memo(() => {
         {badge}
       </Snippet>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img alt="MCP Badge" src={styledBadgeFullUrl} />
+      <img alt="MCP Badge" loading="lazy" src={styledBadgeFullUrl} />
     </>
   );
 });

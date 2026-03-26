@@ -10,6 +10,7 @@ const ImageRenderer: DocRenderer = ({ mainState: { currentDocument } }) => {
       <img
         alt={fileName}
         height={'100%'}
+        loading="lazy"
         src={uri}
         style={{ objectFit: 'contain', overflow: 'hidden' }}
         width={'100%'}

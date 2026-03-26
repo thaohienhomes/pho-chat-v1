@@ -802,9 +802,7 @@ export default function BlogIndexPage() {
               <div className="hero-glow" />
               <div className="hero-content">
                 <div className="hero-badges">
-                  {heroPost.category === 'changelog' && (
-                    <span className="badge-new">Mới Nhất</span>
-                  )}
+                  {heroPost.category === 'changelog' && <span className="badge-new">Mới Nhất</span>}
                   <span
                     className="post-category"
                     style={{
@@ -836,7 +834,12 @@ export default function BlogIndexPage() {
                 <Link className="post-card" href={`/blog/${post.slug}`} key={post.slug}>
                   {post.image ? (
                     <div className="post-image-wrap">
-                      <img alt={post.title} className="post-image" src={post.image} />
+                      <img
+                        alt={post.title}
+                        className="post-image"
+                        loading="lazy"
+                        src={post.image}
+                      />
                     </div>
                   ) : (
                     <div className="post-emoji-wrap">
