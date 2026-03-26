@@ -138,13 +138,29 @@ export const useSend = () => {
     if (!inputMessage && fileList.length === 0) return;
 
     // ============ AUTH CHECK ============
+    // Wait briefly for Clerk to initialize if not loaded yet
+    // Prevents race condition where message fires before auth state is known
+    if (!isLoaded) {
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (getUserStoreState().isLoaded) return resolve();
+          setTimeout(check, 100);
+        };
+        check();
+        setTimeout(resolve, 3000); // Max 3s wait for Clerk CDN (slow in VN)
+      });
+    }
+
+    // Re-read auth state (may have changed during wait)
+    const authState = getUserStoreState();
+
     // If auth is loaded and user is not signed in, save message and trigger login
-    if (isLoaded && !isSignedIn) {
+    if (authState.isLoaded && !authState.isSignedIn) {
       // Save the pending message to localStorage
       savePendingMessage(inputMessage, fileList.length > 0);
 
       // Trigger Clerk sign-in modal
-      openLogin();
+      authState.openLogin?.();
 
       // Don't proceed with sending - user needs to authenticate first
       return;

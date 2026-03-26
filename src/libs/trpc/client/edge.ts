@@ -7,6 +7,7 @@ import type { EdgeRouter } from '@/server/routers/edge';
 import { fetchWithDesktopRemoteRPC } from '@/utils/electron/desktopRemoteRPCFetch';
 
 // Priority 3: Retry once on UNAUTHORIZED — waits for Clerk auth hydration via store polling
+// Prevents SSO callback race condition where edge calls fire before token is ready
 const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
   return ({ op, next }) =>
     observable((observer) => {
@@ -18,8 +19,16 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
             const status = (err as any).data?.httpStatus as number | undefined;
             if (status === 401 && !retried) {
               retried = true;
-              // Poll useUserStore for Clerk auth readiness instead of fixed delay
               const { useUserStore } = await import('@/store/user');
+              const state = useUserStore.getState();
+
+              // If Clerk already loaded but user not signed in, don't retry — genuinely unauthenticated
+              if (state.isLoaded && !state.isSignedIn) {
+                observer.error(err);
+                return;
+              }
+
+              // Poll useUserStore for Clerk auth readiness (extended timeout for slow regions)
               await new Promise<void>((resolve) => {
                 const check = () => {
                   if (useUserStore.getState().isLoaded) return resolve();
@@ -28,8 +37,13 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
                 check();
                 setTimeout(resolve, 5000); // Safety: max 5s wait
               });
-              attempt();
-              return;
+
+              // After waiting, only retry if user is actually signed in
+              const updated = useUserStore.getState();
+              if (updated.isSignedIn) {
+                attempt();
+                return;
+              }
             }
             observer.error(err);
           },
