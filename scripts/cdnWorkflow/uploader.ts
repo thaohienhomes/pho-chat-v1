@@ -7,20 +7,28 @@ import { formatPath } from './s3/utils';
 
 dotenv.config();
 
-if (!process.env.DOC_S3_ACCESS_KEY_ID) {
-  consola.error('请配置 Doc S3 存储的环境变量: DOC_S3_ACCESS_KEY_ID');
+// R2 env vars take priority, fall back to legacy S3 vars
+const accessKeyId = process.env.R2_ACCESS_KEY_ID || process.env.DOC_S3_ACCESS_KEY_ID;
+const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || process.env.DOC_S3_SECRET_ACCESS_KEY;
+const endpoint =
+  process.env.R2_ENDPOINT || 'https://d35842305b91be4b48e06ff9a9ad83f5.r2.cloudflarestorage.com';
+const bucketName = process.env.R2_BUCKET_NAME || 'hub-apac-1';
+const publicDomain = process.env.DOC_S3_PUBLIC_DOMAIN;
+
+if (!accessKeyId) {
+  consola.error('Missing env: R2_ACCESS_KEY_ID or DOC_S3_ACCESS_KEY_ID');
   // eslint-disable-next-line unicorn/no-process-exit
   process.exit(1);
 }
 
-if (!process.env.DOC_S3_SECRET_ACCESS_KEY) {
-  consola.error('请配置 Doc S3 存储的环境变量: DOC_S3_SECRET_ACCESS_KEY');
+if (!secretAccessKey) {
+  consola.error('Missing env: R2_SECRET_ACCESS_KEY or DOC_S3_SECRET_ACCESS_KEY');
   // eslint-disable-next-line unicorn/no-process-exit
   process.exit(1);
 }
 
-if (!process.env.DOC_S3_PUBLIC_DOMAIN) {
-  consola.error('请配置 Doc S3 存储的环境变量: DOC_S3_PUBLIC_DOMAIN');
+if (!publicDomain) {
+  consola.error('Missing env: DOC_S3_PUBLIC_DOMAIN');
   // eslint-disable-next-line unicorn/no-process-exit
   process.exit(1);
 }
@@ -41,13 +49,13 @@ export const uploader = async (
   };
 
   const userConfig: S3UserConfig = {
-    accessKeyId: process.env.DOC_S3_ACCESS_KEY_ID || '',
-    bucketName: 'hub-apac-1',
-    endpoint: 'https://d35842305b91be4b48e06ff9a9ad83f5.r2.cloudflarestorage.com',
-    pathPrefix: process.env.DOC_S3_PUBLIC_DOMAIN || '',
+    accessKeyId: accessKeyId || '',
+    bucketName,
+    endpoint,
+    pathPrefix: publicDomain || '',
     pathStyleAccess: true,
     region: 'auto',
-    secretAccessKey: process.env.DOC_S3_SECRET_ACCESS_KEY || '',
+    secretAccessKey: secretAccessKey || '',
     uploadPath: uploadPath || `${basePath}${filename}.{extName}`,
   };
 
