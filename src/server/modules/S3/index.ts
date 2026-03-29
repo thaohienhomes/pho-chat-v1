@@ -22,7 +22,7 @@ export const listFileSchema = z.array(fileSchema);
 
 export type FileType = z.infer<typeof fileSchema>;
 
-const DEFAULT_S3_REGION = 'us-east-1';
+const DEFAULT_S3_REGION = 'auto';
 
 export class S3 {
   private readonly client: S3Client;

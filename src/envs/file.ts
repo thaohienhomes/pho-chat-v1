@@ -12,6 +12,14 @@ export const getFileConfig = () => {
 
   const S3_PUBLIC_DOMAIN = process.env.S3_PUBLIC_DOMAIN || process.env.NEXT_PUBLIC_S3_DOMAIN;
 
+  // R2 env vars take priority, fall back to legacy S3 vars
+  const resolvedAccessKeyId = process.env.R2_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID;
+  const resolvedSecretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY;
+  const resolvedEndpoint = process.env.R2_ENDPOINT || process.env.S3_ENDPOINT;
+  const resolvedBucket = process.env.R2_BUCKET_NAME || process.env.S3_BUCKET;
+  const resolvedRegion = process.env.R2_ENDPOINT ? 'auto' : process.env.S3_REGION;
+
   return createEnv({
     client: {
       /**
@@ -27,21 +35,21 @@ export const getFileConfig = () => {
       NEXT_PUBLIC_S3_DOMAIN: process.env.NEXT_PUBLIC_S3_DOMAIN,
       NEXT_PUBLIC_S3_FILE_PATH: process.env.NEXT_PUBLIC_S3_FILE_PATH || DEFAULT_S3_FILE_PATH,
 
-      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
-      S3_BUCKET: process.env.S3_BUCKET,
+      S3_ACCESS_KEY_ID: resolvedAccessKeyId,
+      S3_BUCKET: resolvedBucket,
       S3_ENABLE_PATH_STYLE: process.env.S3_ENABLE_PATH_STYLE === '1',
-      S3_ENDPOINT: process.env.S3_ENDPOINT,
+      S3_ENDPOINT: resolvedEndpoint,
       S3_PREVIEW_URL_EXPIRE_IN: parseInt(process.env.S3_PREVIEW_URL_EXPIRE_IN || '7200'),
       S3_PUBLIC_DOMAIN,
-      S3_REGION: process.env.S3_REGION,
-      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+      S3_REGION: resolvedRegion,
+      S3_SECRET_ACCESS_KEY: resolvedSecretAccessKey,
       S3_SET_ACL: process.env.S3_SET_ACL !== '0',
     },
     server: {
       CHUNKS_AUTO_EMBEDDING: z.boolean(),
       CHUNKS_AUTO_GEN_METADATA: z.boolean(),
 
-      // S3
+      // S3 / R2 (R2 env vars resolved above with S3 fallback)
       S3_ACCESS_KEY_ID: z.string().optional(),
       S3_BUCKET: z.string().optional(),
       S3_ENABLE_PATH_STYLE: z.boolean(),
