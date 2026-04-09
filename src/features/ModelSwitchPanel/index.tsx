@@ -1,10 +1,12 @@
 import { ModelIcon } from '@lobehub/icons';
-import { Popover } from 'antd';
+import { Button, Popover } from 'antd';
 import { createStyles, useThemeMode } from 'antd-style';
 import { Eye, Plug, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { type ReactNode, memo, startTransition, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { notification } from '@/components/AntdStaticMethods';
 import { getModelTier } from '@/config/pricing';
 import {
   MODEL_DESCRIPTIONS,
@@ -184,7 +186,6 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
     `,
 
     modelRowDisabled: css`
-      pointer-events: none;
       cursor: not-allowed;
       opacity: 0.4;
       filter: grayscale(0.8);
@@ -455,6 +456,7 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
   const { styles, cx } = useStyles();
   const { isDarkMode: isDark } = useThemeMode();
   const { t } = useTranslation('components');
+  const router = useRouter();
   const model = useAgentStore((s) => agentSelectors.currentAgentModel(s));
   const updateAgentConfig = useAgentStore((s) => s.updateAgentConfig);
   const tiers = useEnabledChatModels() as TierGroup[];
@@ -498,6 +500,33 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
       });
     },
     [updateAgentConfig, setOpen],
+  );
+
+  const handleLockedModelClick = useCallback(
+    (modelId: string, displayName: string) => {
+      const tier = getModelTier(modelId);
+      const tierLabel = tier === 3 ? 'Flagship' : 'Professional';
+      const key = `locked-model-${Date.now()}`;
+      notification.info({
+        btn: (
+          <Button
+            onClick={() => {
+              notification.destroy(key);
+              router.push('/settings?active=subscription');
+            }}
+            size="small"
+            type="primary"
+          >
+            {t('ModelSwitchPanel.upgradeButton')}
+          </Button>
+        ),
+        description: t('ModelSwitchPanel.upgradeDescription', { tierLabel }),
+        duration: 6,
+        key,
+        message: t('ModelSwitchPanel.upgradeTitle', { modelName: displayName }),
+      });
+    },
+    [router, t],
   );
 
   /* ── quota hint color ── */
@@ -564,7 +593,11 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
                       !ok && styles.modelRowDisabled,
                     )}
                     key={m.id}
-                    onClick={ok ? () => onSelect(m.id, prov) : undefined}
+                    onClick={
+                      ok
+                        ? () => onSelect(m.id, prov)
+                        : () => handleLockedModelClick(m.id, m.displayName)
+                    }
                   >
                     {sel && (
                       <div className={styles.selectedBar} style={{ background: cfg.accent }} />

@@ -138,6 +138,10 @@ export default {
     tierFree: 'Nhanh & Miễn Phí',
     tierPro: 'Chuyên Nghiệp',
     title: '模型',
+    upgradeButton: 'Upgrade Now',
+    upgradeDescription:
+      'This {{tierLabel}} model requires a paid plan. Upgrade to unlock {{tierLabel}} models and more.',
+    upgradeTitle: '🔒 {{modelName}} requires upgrade',
   },
   MultiImagesUpload: {
     actions: {
