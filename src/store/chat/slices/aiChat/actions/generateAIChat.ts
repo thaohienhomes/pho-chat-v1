@@ -20,10 +20,10 @@ import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { getFileStoreState } from '@/store/file/store';
 import { useSessionStore } from '@/store/session';
 import { WebBrowsingManifest } from '@/tools/web-browsing';
-import { PHO_AUTO_MODEL_ID, resolveAutoModel } from '@/utils/autoRouter';
 import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
 import { ChatImageItem } from '@/types/message/image';
 import { MessageSemanticSearchChunk } from '@/types/rag';
+import { PHO_AUTO_MODEL_ID, resolveAutoModel } from '@/utils/autoRouter';
 import { Action, setNamespace } from '@/utils/storeDebug';
 
 import { chatSelectors, topicSelectors } from '../../../selectors';
@@ -40,6 +40,8 @@ interface ProcessMessageParams {
   ragQuery?: string;
   threadId?: string;
   inPortalThread?: boolean;
+  /** Current tool call round for loop prevention */
+  toolCallRound?: number;
 }
 
 export interface AIGenerateAction {
@@ -474,6 +476,7 @@ export const generateAIChat: StateCreator<
         await triggerToolCalls(assistantId, {
           threadId: params?.threadId,
           inPortalThread: params?.inPortalThread,
+          toolCallRound: params?.toolCallRound ?? 0,
         });
 
         // then story the workflow
@@ -497,15 +500,15 @@ export const generateAIChat: StateCreator<
       await triggerToolCalls(assistantId, {
         threadId: params?.threadId,
         inPortalThread: params?.inPortalThread,
+        toolCallRound: params?.toolCallRound ?? 0,
       });
     } else {
       // 显示桌面通知（仅在桌面端且窗口隐藏时）
       if (isDesktop) {
         try {
           // 动态导入桌面通知服务，避免在非桌面端环境中导入
-          const { desktopNotificationService } = await import(
-            '@/services/electron/desktopNotification'
-          );
+          const { desktopNotificationService } =
+            await import('@/services/electron/desktopNotification');
 
           await desktopNotificationService.showNotification({
             body: content,

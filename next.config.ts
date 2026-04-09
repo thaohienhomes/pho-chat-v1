@@ -271,6 +271,7 @@ const nextConfig: NextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
     minimumCacheTTL: 31_536_000, // 1 year
+    remotePatterns: [{ hostname: '**', protocol: 'https' }],
   },
 
   logging: {

@@ -332,43 +332,92 @@ const useStyles = createStyles(({ css, token }) => ({
 
 /* ────────────────────────── helpers ────────────────────────── */
 
-async function callAI(model: string, prompt: string, retries = 1): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort('Timeout: request took too long'), 300_000); // 5 min to match API maxDuration
+/* ── Concurrency limiter for AI calls (max 2 parallel to avoid 429) ── */
+const aiSemaphore = { current: 0, max: 2, queue: [] as (() => void)[] };
+
+function acquireSemaphore(): Promise<void> {
+  if (aiSemaphore.current < aiSemaphore.max) {
+    aiSemaphore.current++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    aiSemaphore.queue.push(() => {
+      aiSemaphore.current++;
+      resolve();
+    });
+  });
+}
+
+function releaseSemaphore(): void {
+  aiSemaphore.current--;
+  const next = aiSemaphore.queue.shift();
+  if (next) next();
+}
+
+async function callAI(model: string, prompt: string, label = 'unknown'): Promise<string> {
+  await acquireSemaphore();
+  const MAX_RETRIES = 3;
 
   try {
-    const res = await fetch('/api/research/ai-summary', {
-      body: JSON.stringify({ model, prompt }),
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort('Timeout: request took too long'),
+        300_000,
+      );
+
+      try {
+        const res = await fetch('/api/research/ai-summary', {
+          body: JSON.stringify({ model, prompt }),
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          signal: controller.signal,
+        });
+
+        if (res.status === 429) {
+          clearTimeout(timeoutId);
+          const delayMs = Math.min(2000 * Math.pow(2, attempt), 8000);
+          console.warn(
+            `[DeepResearch] 429 rate limit for ${label}, retry ${attempt + 1} in ${delayMs}ms`,
+          );
+          (window as any).posthog?.capture('ai_rate_limit_429', {
+            attempt,
+            delay_ms: delayMs,
+            label,
+          });
+          await new Promise<void>((r) => {
+            setTimeout(r, delayMs);
+          });
+          continue;
+        }
+
+        if (!res.ok) {
+          clearTimeout(timeoutId);
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        clearTimeout(timeoutId);
+        console.log('[DeepResearch] callAI response:', {
+          label,
+          length: data.text?.length,
+          model: data.model,
+          provider: data.provider,
+        });
+        return data.text || '';
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') {
+          throw new Error('Request timed out — server may be overloaded. Please try again.');
+        }
+        throw e;
+      }
     }
-    const data = await res.json();
-    console.log('[DeepResearch] callAI response:', {
-      length: data.text?.length,
-      model: data.model,
-      provider: data.provider,
-    });
-    return data.text || '';
-  } catch (e: any) {
-    clearTimeout(timeoutId);
-    // Retry once on abort/timeout
-    if (retries > 0 && (e.name === 'AbortError' || e.message?.includes('abort'))) {
-      console.log('[DeepResearch] Retrying after abort...');
-      return callAI(model, prompt, retries - 1);
-    }
-    // Friendly error message for abort
-    if (e.name === 'AbortError') {
-      throw new Error('Request timed out — server may be overloaded. Please try again.');
-    }
-    throw e;
+    throw new Error(`Rate limited after ${MAX_RETRIES} retries`);
   } finally {
-    clearTimeout(timeoutId);
+    releaseSemaphore();
   }
 }
 
@@ -874,7 +923,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
       ]);
 
       try {
-        const result = await callAI(model, ap.prompt);
+        const result = await callAI(model, ap.prompt, ap.name);
         if (abortRef.current) return;
         updatedAgents[idx] = { content: result, name: ap.name, status: 'done' };
         setAgents([...updatedAgents]);
@@ -925,6 +974,11 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
     setPhase('article');
     setArticle('');
     setProgressLines((prev) => [...prev, '✍️ Đang viết bài tổng quan...']);
+
+    // Cool-down delay to avoid 429 after agent calls
+    await new Promise<void>((r) => {
+      setTimeout(r, 2000);
+    });
 
     const articleStartTime = Date.now();
     (window as any).posthog?.capture('article_generation_started', {

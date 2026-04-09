@@ -55,12 +55,18 @@ export interface ChatPluginAction {
     threadId?: string;
     inPortalThread?: boolean;
     inSearchWorkflow?: boolean;
+    toolCallRound?: number;
   }) => Promise<void>;
   summaryPluginContent: (id: string) => Promise<void>;
 
   triggerToolCalls: (
     id: string,
-    params?: { threadId?: string; inPortalThread?: boolean; inSearchWorkflow?: boolean },
+    params?: {
+      threadId?: string;
+      inPortalThread?: boolean;
+      inSearchWorkflow?: boolean;
+      toolCallRound?: number;
+    },
   ) => Promise<void>;
   updatePluginState: (id: string, value: any) => Promise<void>;
   updatePluginArguments: <T = any>(id: string, value: T, replace?: boolean) => Promise<void>;
@@ -244,7 +250,14 @@ export const chatPlugin: StateCreator<
     await get().internal_invokeDifferentTypePlugin(id, payload);
   },
 
-  triggerAIMessage: async ({ parentId, traceId, threadId, inPortalThread, inSearchWorkflow }) => {
+  triggerAIMessage: async ({
+    parentId,
+    traceId,
+    threadId,
+    inPortalThread,
+    inSearchWorkflow,
+    toolCallRound,
+  }) => {
     const { internal_coreProcessMessage } = get();
 
     const chats = inPortalThread
@@ -256,6 +269,7 @@ export const chatPlugin: StateCreator<
       threadId,
       inPortalThread,
       inSearchWorkflow,
+      toolCallRound,
     });
   },
 
@@ -281,7 +295,10 @@ export const chatPlugin: StateCreator<
     );
   },
 
-  triggerToolCalls: async (assistantId, { threadId, inPortalThread, inSearchWorkflow } = {}) => {
+  triggerToolCalls: async (
+    assistantId,
+    { threadId, inPortalThread, inSearchWorkflow, toolCallRound = 0 } = {},
+  ) => {
     const message = chatSelectors.getMessageById(assistantId)(get());
     if (!message || !message.tools) return;
 
@@ -315,9 +332,7 @@ export const chatPlugin: StateCreator<
 
     // Extract academic citations from scientific skills tool results
     // to populate SearchGrounding + BibliographySection (Perplexity-style)
-    const scientificTools = message.tools.filter(
-      (t) => t.identifier === 'pho-scientific-skills',
-    );
+    const scientificTools = message.tools.filter((t) => t.identifier === 'pho-scientific-skills');
     if (scientificTools.length > 0) {
       const citations: CitationItem[] = [];
       const searchQueries: string[] = [];
@@ -332,8 +347,7 @@ export const chatPlugin: StateCreator<
           if (content.query) searchQueries.push(content.query);
 
           for (const paper of papers) {
-            const paperUrl =
-              paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : undefined);
+            const paperUrl = paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : undefined);
             if (!paperUrl) continue;
 
             citations.push({
@@ -372,9 +386,22 @@ export const chatPlugin: StateCreator<
     // only default type tool calls should trigger AI message
     if (!shouldCreateMessage) return;
 
+    // Limit tool call rounds to prevent infinite loops (e.g., search-only assistants)
+    const MAX_TOOL_CALL_ROUNDS = 5;
+    if (toolCallRound >= MAX_TOOL_CALL_ROUNDS) {
+      console.warn(`[Chat] Tool call round limit reached (${MAX_TOOL_CALL_ROUNDS}), stopping loop`);
+      return;
+    }
+
     const traceId = chatSelectors.getTraceIdByMessageId(latestToolId)(get());
 
-    await get().triggerAIMessage({ traceId, threadId, inPortalThread, inSearchWorkflow });
+    await get().triggerAIMessage({
+      traceId,
+      threadId,
+      inPortalThread,
+      inSearchWorkflow,
+      toolCallRound: toolCallRound + 1,
+    });
   },
   updatePluginState: async (id, value) => {
     const { refreshMessages } = get();
