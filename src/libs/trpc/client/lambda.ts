@@ -43,6 +43,16 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
                 setTimeout(resolve, 8000); // Max 8s wait (Clerk CDN slow in VN)
               });
 
+              // Try to silently refresh the Clerk session token
+              try {
+                const clerk = (window as any).Clerk;
+                if (clerk?.session) {
+                  await clerk.session.getToken({ skipCache: true });
+                }
+              } catch {
+                // Token refresh failed — will fall through to error
+              }
+
               // After waiting, only retry if user is actually signed in
               const updated = useUserStore.getState();
               if (updated.isSignedIn) {
@@ -84,7 +94,11 @@ const errorHandlingLink: TRPCLink<LambdaRouter> = () => {
             // This allows proper error handling in the catch block to create ChatErrorType.InvalidClerkUser
             switch (status) {
               case 401: {
-                // Skip notification for 401 - will be handled by message error handler
+                // Track expired sessions via PostHog
+                (window as any).posthog?.capture('auth_session_expired', {
+                  pathname: window.location.pathname,
+                  url: window.location.href,
+                });
                 break;
               }
 

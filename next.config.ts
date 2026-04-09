@@ -2,6 +2,7 @@ import analyzer from '@next/bundle-analyzer';
 import withSerwistInit from '@serwist/next';
 import type { NextConfig } from 'next';
 import ReactComponentName from 'react-scan/react-component-name/webpack';
+import { RetryChunkLoadPlugin } from 'webpack-retry-chunk-load-plugin';
 
 const isProd = process.env.NODE_ENV === 'production';
 const buildWithDocker = process.env.DOCKER === 'true';
@@ -512,6 +513,17 @@ const nextConfig: NextConfig = {
       zipfile: false,
       zlib: false,
     };
+
+    // Retry failed chunk loads (caused by stale chunks after Vercel deploys)
+    if (!isServer) {
+      config.plugins.push(
+        new RetryChunkLoadPlugin({
+          lastResortScript: 'window.location.reload()',
+          maxRetries: 3,
+          retryDelay: 1000,
+        }),
+      );
+    }
 
     if (assetPrefix && (assetPrefix.startsWith('http://') || assetPrefix.startsWith('https://'))) {
       // fix the Worker URL cross-origin issue

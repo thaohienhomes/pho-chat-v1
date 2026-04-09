@@ -2,7 +2,7 @@ import { ModelIcon } from '@lobehub/icons';
 import { Popover } from 'antd';
 import { createStyles, useThemeMode } from 'antd-style';
 import { Eye, Plug, Search } from 'lucide-react';
-import { type ReactNode, memo, useCallback, useMemo, useState } from 'react';
+import { type ReactNode, memo, startTransition, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getModelTier } from '@/config/pricing';
@@ -492,8 +492,10 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
 
   const onSelect = useCallback(
     async (id: string, prov: string) => {
-      await updateAgentConfig({ model: id, provider: prov });
       setOpen(false);
+      startTransition(() => {
+        updateAgentConfig({ model: id, provider: prov });
+      });
     },
     [updateAgentConfig, setOpen],
   );

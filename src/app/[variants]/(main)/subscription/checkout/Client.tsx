@@ -529,7 +529,7 @@ function CheckoutContent() {
   }, [planId, plan, showSuccess, loading, billingCycle, paymentMethod]);
 
   const handleBankTransferSubmit = async (values: any) => {
-    if (!plan) return;
+    if (!plan || loading) return;
     setLoading(true);
     try {
       const vndAmount = billingCycle === 'yearly' ? plan.yearlyPriceVND : plan.monthlyPriceVND;
@@ -571,7 +571,7 @@ function CheckoutContent() {
   };
 
   const handleCreditCardSubmit = async () => {
-    if (!plan) return;
+    if (!plan || loading) return;
 
     // Validate form before proceeding
     try {
@@ -632,7 +632,7 @@ function CheckoutContent() {
 
   // Handler for FREE plan activation (no payment needed)
   const handleFreePlanActivation = async () => {
-    if (!plan) return;
+    if (!plan || loading) return;
 
     // Validate form before proceeding
     try {

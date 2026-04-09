@@ -1,6 +1,6 @@
 import { Skeleton } from 'antd';
 import { createStyles } from 'antd-style';
-import { Suspense, memo, useState } from 'react';
+import { Suspense, memo, startTransition, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
@@ -62,8 +62,10 @@ const TopicItem = memo<ConfigCellProps>(({ title, active, id, fav, threadId }) =
         distribution={'space-between'}
         horizontal
         onClick={() => {
-          toggleTopic(id);
-          toggleConfig(false);
+          startTransition(() => {
+            toggleTopic(id);
+            toggleConfig(false);
+          });
         }}
         onMouseEnter={() => {
           setHovering(true);

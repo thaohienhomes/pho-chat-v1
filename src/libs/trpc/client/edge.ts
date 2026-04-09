@@ -38,6 +38,16 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
                 setTimeout(resolve, 5000); // Safety: max 5s wait
               });
 
+              // Try to silently refresh the Clerk session token
+              try {
+                const clerk = (window as any).Clerk;
+                if (clerk?.session) {
+                  await clerk.session.getToken({ skipCache: true });
+                }
+              } catch {
+                // Token refresh failed — will fall through to error
+              }
+
               // After waiting, only retry if user is actually signed in
               const updated = useUserStore.getState();
               if (updated.isSignedIn) {
@@ -56,7 +66,7 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
 const customHttpBatchLink = httpBatchLink({
   fetch: isDesktop
     ? // eslint-disable-next-line no-undef
-    (input, init) => fetchWithDesktopRemoteRPC(input as string, init as RequestInit)
+      (input, init) => fetchWithDesktopRemoteRPC(input as string, init as RequestInit)
     : undefined,
   headers: async () => {
     // dynamic import to avoid circular dependency

@@ -85,6 +85,7 @@
     "test-app": "vitest run",
     "test-app:coverage": "vitest --coverage --silent='passed-only'",
     "type-check": "tsgo --noEmit",
+    "upload-sourcemaps": "node scripts/upload-sourcemaps.mjs",
     "webhook:ngrok": "ngrok http http://localhost:3011",
     "workflow:cdn": "tsx ./scripts/cdnWorkflow/index.ts",
     "workflow:changelog": "tsx ./scripts/changelogWorkflow/index.ts",
@@ -387,7 +388,8 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "vite": "^7.1.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "webpack-retry-chunk-load-plugin": "^3.1.1"
   },
   "packageManager": "pnpm@10.17.0",
   "publishConfig": {

@@ -20,6 +20,9 @@ const LLM_PROVIDER_FLAGS = [
   'llm-provider-perplexity',
 ];
 
+/** Safety: if >60% flags are false, treat as misconfiguration and enable all */
+const MISCONFIGURATION_THRESHOLD = 0.6;
+
 /**
  * Hook to access PostHog feature flags on the CLIENT side.
  *
@@ -44,12 +47,36 @@ export const usePostHogFeatureFlags = () => {
 
     const readFlags = (ph: any) => {
       const flags: Record<string, boolean> = {};
+      let falseCount = 0;
+      let definedCount = 0;
+
       for (const key of LLM_PROVIDER_FLAGS) {
         // isFeatureEnabled returns true/false/undefined
         // undefined means flag not defined → treat as true (fail-open)
         const value = ph.isFeatureEnabled(key);
         flags[key] = value === undefined ? true : !!value;
+        if (value !== undefined) {
+          definedCount++;
+          if (!value) falseCount++;
+        }
       }
+
+      // Safety: if >60% defined flags are false, likely misconfiguration — enable all
+      if (definedCount > 0 && falseCount / definedCount > MISCONFIGURATION_THRESHOLD) {
+        console.warn(
+          '[FeatureFlags] Safety fallback triggered: %d/%d flags are false — enabling all providers',
+          falseCount,
+          definedCount,
+        );
+        for (const key of LLM_PROVIDER_FLAGS) {
+          flags[key] = true;
+        }
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FeatureFlags]', { definedCount, falseCount, flags });
+      }
+
       setFlagState({ flags, ready: true });
     };
 
