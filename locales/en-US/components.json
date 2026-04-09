@@ -134,7 +134,10 @@
     "tierFlagship": "Flagship",
     "tierFree": "Fast & Free",
     "tierPro": "Professional",
-    "title": "Model"
+    "title": "Model",
+    "upgradeButton": "Upgrade Now",
+    "upgradeDescription": "This {{tierLabel}} model requires a paid plan. Upgrade to unlock {{tierLabel}} models and more.",
+    "upgradeTitle": "🔒 {{modelName}} requires upgrade"
   },
   "MultiImagesUpload": {
     "actions": {

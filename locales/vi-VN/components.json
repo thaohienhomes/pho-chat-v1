@@ -134,7 +134,10 @@
     "tierFlagship": "Flagship",
     "tierFree": "Nhanh & Miễn Phí",
     "tierPro": "Chuyên Nghiệp",
-    "title": "Mô hình"
+    "title": "Mô hình",
+    "upgradeButton": "Nâng cấp ngay",
+    "upgradeDescription": "Model {{tierLabel}} yêu cầu gói trả phí. Nâng cấp để mở khóa các model {{tierLabel}} và nhiều tính năng khác.",
+    "upgradeTitle": "🔒 {{modelName}} cần nâng cấp"
   },
   "MultiImagesUpload": {
     "actions": {

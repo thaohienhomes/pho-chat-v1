@@ -124,7 +124,10 @@
     "emptyProvider": "没有启用的服务商，请前往设置开启",
     "goToSettings": "前往设置",
     "provider": "服务商",
-    "title": "模型"
+    "title": "模型",
+    "upgradeButton": "立即升级",
+    "upgradeDescription": "此 {{tierLabel}} 模型需要付费计划。升级以解锁 {{tierLabel}} 模型及更多功能。",
+    "upgradeTitle": "🔒 {{modelName}} 需要升级"
   },
   "MultiImagesUpload": {
     "actions": {
