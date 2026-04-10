@@ -123,7 +123,7 @@ export async function POST(req: Request) {
     const event = JSON.parse(body);
 
     console.log('📥 Polar Webhook Event:', {
-      email: event.data?.customer_email,
+      email: event.data?.customer_email || event.data?.customer?.email,
       productId: event.data?.product_id,
       type: event.type,
     });
@@ -140,7 +140,8 @@ export async function POST(req: Request) {
 
     // Handle successful payment
     if (event.type === 'checkout.completed' || event.type === 'order.created') {
-      const { customer_email, product_id } = event.data;
+      const customer_email = event.data.customer_email || event.data.customer?.email;
+      const { product_id } = event.data;
 
       if (!customer_email) {
         console.error('❌ No customer email in webhook data');
@@ -312,7 +313,7 @@ export async function POST(req: Request) {
 
     // Handle refund
     if (event.type === 'order.refunded') {
-      const { customer_email } = event.data;
+      const customer_email = event.data.customer_email || event.data.customer?.email;
 
       if (!customer_email) {
         return NextResponse.json({ error: 'No customer email' }, { status: 400 });
