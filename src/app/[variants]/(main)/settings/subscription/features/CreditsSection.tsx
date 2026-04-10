@@ -5,6 +5,7 @@ import { createStyles } from 'antd-style';
 import { memo } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
+import { useUsageStats } from '@/hooks/useUsageStats';
 import { useUserStore } from '@/store/user';
 
 const { Title } = Typography;
@@ -21,15 +22,15 @@ const useStyles = createStyles(({ css, token }) => ({
 const CreditsSection = memo(() => {
   const { styles, theme: token } = useStyles();
 
-  // Read phoPointsBalance from common state (populated by useInitUserState)
-  const phoPointsBalance = useUserStore((s) => s.phoPointsBalance);
+  // Use the same data source as the Usage page for correct adjusted balance
+  const { stats, isLoading } = useUsageStats();
   // Read lifetimeSpent from user object (LobeUser)
   const lifetimeSpent = useUserStore((s) => s.user?.lifetimeSpent);
   const isInit = useUserStore((s) => s.isUserStateInit);
 
-  if (!isInit) return null;
+  if (!isInit || isLoading) return null;
 
-  const balance = phoPointsBalance ?? 0;
+  const balance = stats?.phoPointsBalance ?? 0;
   const spent = lifetimeSpent ?? 0;
 
   return (

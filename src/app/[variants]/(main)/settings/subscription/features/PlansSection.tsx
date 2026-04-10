@@ -1,5 +1,6 @@
 'use client';
 
+import { useUser } from '@clerk/nextjs';
 import { Typography } from 'antd';
 import { useTheme } from 'antd-style';
 import { useRouter } from 'next/navigation';
@@ -20,7 +21,9 @@ interface PlansSectionProps {
 const PlansSection = memo<PlansSectionProps>(({ mobile }) => {
   const theme = useTheme();
   const router = useRouter();
+  const { user } = useUser();
   const { trackUpgradeClick } = useTikTokTracking();
+  const currentPlanId = (user?.publicMetadata?.planId as string) || undefined;
 
   const handleUpgrade = async (planId: string) => {
     // Find the plan details for tracking
@@ -50,7 +53,11 @@ const PlansSection = memo<PlansSectionProps>(({ mobile }) => {
   return (
     <Flexbox gap={24} width="100%">
       {/* Geo-Aware Pricing Section - Handles Title and Toggle internally */}
-      <GeoAwarePricingSection mobile={mobile} onSelectPlan={handleUpgrade} />
+      <GeoAwarePricingSection
+        currentPlanId={currentPlanId}
+        mobile={mobile}
+        onSelectPlan={handleUpgrade}
+      />
 
       {/* Additional Info */}
       <Flexbox gap={8} style={{ marginTop: 16 }}>
