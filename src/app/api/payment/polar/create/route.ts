@@ -26,21 +26,16 @@ const VALID_POLAR_PLAN_IDS = [
 
 // Map plan IDs to Polar internal codes
 const PLAN_ID_TO_POLAR_CODE: Record<string, 'starter' | 'premium' | 'ultimate'> = {
-  
   // New global codes map to Polar codes
-gl_lifetime: 'ultimate',
-  
+  gl_lifetime: 'ultimate',
 
-// Lifetime maps to ultimate tier
-gl_premium: 'premium',
-  
+  // Lifetime maps to ultimate tier
+  gl_premium: 'premium',
 
+  gl_standard: 'starter',
 
-gl_standard: 'starter',
-  
-  
-// Legacy codes map directly
-premium: 'premium', 
+  // Legacy codes map directly
+  premium: 'premium',
   starter: 'starter',
   ultimate: 'ultimate', // Standard maps to starter tier
 };
@@ -125,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Create checkout session
     const checkoutParams = {
-      cancelUrl: cancelUrl || `${baseUrl}/settings/subscription?canceled=true`,
+      cancelUrl: cancelUrl || `${baseUrl}/settings?active=subscription&canceled=true`,
       customerEmail,
       customerName,
       metadata: {
@@ -136,7 +131,7 @@ export async function POST(req: NextRequest) {
       },
       priceId,
       productId,
-      successUrl: successUrl || `${baseUrl}/settings/subscription?success=true`,
+      successUrl: successUrl || `${baseUrl}/settings?active=subscription&success=true`,
     };
     console.log('🔧 Creating Polar checkout session:', checkoutParams);
 

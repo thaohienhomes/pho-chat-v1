@@ -5,6 +5,69 @@ import { getServerDB } from '@/database/server';
 import { logWebhookEvent } from '@/libs/webhookLogger';
 
 /**
+ * Map Polar product IDs to plan configuration.
+ * Uses env vars for monthly/yearly subscriptions and lifetime deals,
+ * with hardcoded UUID fallbacks for existing lifetime customers.
+ */
+function buildPolarProductMap(): Record<
+  string,
+  { billingCycle: string; lifetimeDeal: boolean; planId: string }
+> {
+  const map: Record<string, { billingCycle: string; lifetimeDeal: boolean; planId: string }> = {};
+
+  // Monthly/Yearly subscriptions (from env vars)
+  const subscriptionMappings = [
+    { billingCycle: 'monthly', envVar: 'POLAR_PRODUCT_STARTER_MONTHLY_ID', planId: 'gl_standard' },
+    { billingCycle: 'yearly', envVar: 'POLAR_PRODUCT_STARTER_YEARLY_ID', planId: 'gl_standard' },
+    { billingCycle: 'monthly', envVar: 'POLAR_PRODUCT_PREMIUM_MONTHLY_ID', planId: 'gl_premium' },
+    { billingCycle: 'yearly', envVar: 'POLAR_PRODUCT_PREMIUM_YEARLY_ID', planId: 'gl_premium' },
+  ] as const;
+
+  for (const { envVar, planId, billingCycle } of subscriptionMappings) {
+    const productId = process.env[envVar];
+    if (productId) {
+      map[productId] = { billingCycle, lifetimeDeal: false, planId };
+    }
+  }
+
+  // Lifetime deals (from env vars)
+  const lifetimeMappings = [
+    { envVar: 'POLAR_PRODUCT_LIFETIME_EARLY_BIRD_ID', planId: 'lifetime_early_bird' },
+    { envVar: 'POLAR_PRODUCT_LIFETIME_STANDARD_ID', planId: 'lifetime_standard' },
+    { envVar: 'POLAR_PRODUCT_LIFETIME_LAST_CALL_ID', planId: 'lifetime_last_call' },
+    { envVar: 'POLAR_PRODUCT_ULTIMATE_ID', planId: 'lifetime_last_call' },
+  ] as const;
+
+  for (const { envVar, planId } of lifetimeMappings) {
+    const productId = process.env[envVar];
+    if (productId) {
+      map[productId] = { billingCycle: 'lifetime', lifetimeDeal: true, planId };
+    }
+  }
+
+  // Hardcoded UUID fallbacks for existing lifetime customers
+  map['85158f39-dd9d-4ed9-b344-9afa5eba5080'] = {
+    billingCycle: 'lifetime',
+    lifetimeDeal: true,
+    planId: 'lifetime_early_bird',
+  };
+  map['01faa30d-bfb7-4699-8916-4288591d3fa6'] = {
+    billingCycle: 'lifetime',
+    lifetimeDeal: true,
+    planId: 'lifetime_standard',
+  };
+  map['646af452-89ad-439b-9109-8840320e2485'] = {
+    billingCycle: 'lifetime',
+    lifetimeDeal: true,
+    planId: 'lifetime_last_call',
+  };
+
+  return map;
+}
+
+const POLAR_PRODUCT_MAP = buildPolarProductMap();
+
+/**
  * Allocate Phở Points for lifetime members
  */
 async function allocateLifetimePoints(db: any, userId: string, planId: string) {
@@ -74,22 +137,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'No customer email' }, { status: 400 });
       }
 
-      // Map Product ID → Plan ID
-      let planId = 'lifetime_last_call'; // Default
-      switch (product_id) {
-        case '85158f39-dd9d-4ed9-b344-9afa5eba5080': {
-          planId = 'lifetime_early_bird';
-          break;
-        }
-        case '01faa30d-bfb7-4699-8916-4288591d3fa6': {
-          planId = 'lifetime_standard';
-          break;
-        }
-        case '646af452-89ad-439b-9109-8840320e2485': {
-          planId = 'lifetime_last_call';
-          break;
-        }
+      // Map Product ID → Plan config
+      const productMapping = POLAR_PRODUCT_MAP[product_id];
+      if (!productMapping) {
+        console.error(`❌ [Polar Webhook] Unknown product ID: ${product_id}`);
+        return NextResponse.json({ error: 'Unknown product' }, { status: 400 });
       }
+      const { planId, billingCycle, lifetimeDeal } = productMapping;
 
       const db: any = await getServerDB();
       const schemas: any = await import('@lobechat/database/schemas');
@@ -105,7 +159,17 @@ export async function POST(req: Request) {
 
       // Create/Update subscription
       const start = new Date();
-      const end = new Date('2099-12-31'); // Lifetime
+      let end: Date;
+      if (billingCycle === 'lifetime') {
+        end = new Date('2099-12-31');
+      } else if (billingCycle === 'yearly') {
+        end = new Date(start);
+        end.setFullYear(end.getFullYear() + 1);
+      } else {
+        // monthly
+        end = new Date(start);
+        end.setMonth(end.getMonth() + 1);
+      }
 
       // Check if subscription exists
       const [existing] = await db
@@ -119,7 +183,7 @@ export async function POST(req: Request) {
         await db
           .update(subscriptions)
           .set({
-            billingCycle: 'lifetime',
+            billingCycle,
             cancelAtPeriodEnd: false,
             currentPeriodEnd: end,
             currentPeriodStart: start,
@@ -132,7 +196,7 @@ export async function POST(req: Request) {
       } else {
         // Create new subscription
         await db.insert(subscriptions).values({
-          billingCycle: 'lifetime',
+          billingCycle,
           cancelAtPeriodEnd: false,
           currentPeriodEnd: end,
           currentPeriodStart: start,
@@ -144,7 +208,10 @@ export async function POST(req: Request) {
       }
 
       // Sync users.currentPlanId for fallback consistency
-      await db.update(users).set({ currentPlanId: planId, subscriptionStatus: 'ACTIVE' }).where(eq(users.id, user.id));
+      await db
+        .update(users)
+        .set({ currentPlanId: planId, subscriptionStatus: 'ACTIVE' })
+        .where(eq(users.id, user.id));
       console.log('✅ users.currentPlanId + subscriptionStatus synced to:', planId);
 
       // Allocate Phở Points
@@ -175,7 +242,7 @@ export async function POST(req: Request) {
         properties: {
           $currency: event.data.currency || 'USD',
           $revenue: amountUSD, // Special PostHog property for Revenue charts
-          billing_period: 'lifetime',
+          billing_period: billingCycle,
           payment_provider: 'polar',
           plan_id: planId,
           product_id: product_id,
@@ -188,7 +255,7 @@ export async function POST(req: Request) {
         properties: {
           plan_id: planId,
           status: 'active',
-          type: 'lifetime',
+          type: billingCycle,
         },
         userId: user.id,
       });
@@ -200,7 +267,8 @@ export async function POST(req: Request) {
           await fetch(`https://api.clerk.com/v1/users/${user.id}/metadata`, {
             body: JSON.stringify({
               public_metadata: {
-                lifetimeDeal: planId.startsWith('lifetime_'),
+                billingCycle,
+                lifetimeDeal,
                 planId,
                 promoActivatedAt: new Date().toISOString(),
               },
@@ -272,11 +340,21 @@ export async function POST(req: Request) {
     }
 
     // Other events - just acknowledge
-    void logWebhookEvent({ eventType: 'other', payload: body as any, provider: 'polar', status: 'ignored' });
+    void logWebhookEvent({
+      eventType: 'other',
+      payload: body as any,
+      provider: 'polar',
+      status: 'ignored',
+    });
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error('❌ Webhook error:', error);
-    void logWebhookEvent({ errorMessage: error instanceof Error ? error.message : String(error), eventType: 'error', provider: 'polar', status: 'error' });
+    void logWebhookEvent({
+      errorMessage: error instanceof Error ? error.message : String(error),
+      eventType: 'error',
+      provider: 'polar',
+      status: 'error',
+    });
     return NextResponse.json(
       {
         details: error instanceof Error ? error.message : 'Unknown error',
