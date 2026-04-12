@@ -580,6 +580,8 @@ When the user explicitly asks for a **downloadable PowerPoint file**, a **.pptx 
 Use a \`text/html\` artifact that loads **pptxgenjs** from CDN and generates a downloadable .pptx file directly in the browser.
 
 ## Template:
+IMPORTANT: Do NOT use \`<script src="...">\` tags in the \`<head>\` — external scripts may fail to load or race with inline code in a sandboxed iframe. Instead, use **dynamic script loading with onload callback** (same pattern as ResearchSlides.tsx):
+
 \`\`\`
 <lobeArtifact identifier="pptx-[topic]" type="text/html" title="[Title] — PowerPoint Download">
 <!DOCTYPE html>
@@ -588,19 +590,19 @@ Use a \`text/html\` artifact that loads **pptxgenjs** from CDN and generates a d
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PowerPoint Generator</title>
-  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@4/dist/pptxgen.bundle.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .container { text-align: center; padding: 2rem; }
+    .container { text-align: center; padding: 2rem; max-width: 600px; }
     h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-    p { color: #94a3b8; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .subtitle { color: #94a3b8; margin-bottom: 1.5rem; font-size: 0.9rem; }
     .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
     .btn:hover { background: #2563eb; }
     .btn:disabled { background: #475569; cursor: not-allowed; }
-    .status { margin-top: 1rem; font-size: 0.85rem; color: #94a3b8; }
+    .status { margin-top: 1rem; font-size: 0.85rem; color: #94a3b8; min-height: 1.5em; }
     .success { color: #34d399; }
-    .preview { margin-top: 1.5rem; text-align: left; max-width: 500px; margin-inline: auto; }
+    .error { color: #f87171; }
+    .preview { margin-top: 1.5rem; text-align: left; }
     .preview h3 { font-size: 0.85rem; color: #64748b; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .slide-list { list-style: none; }
     .slide-list li { padding: 6px 12px; border-left: 2px solid #3b82f6; margin-bottom: 4px; font-size: 0.85rem; color: #cbd5e1; }
@@ -609,10 +611,8 @@ Use a \`text/html\` artifact that loads **pptxgenjs** from CDN and generates a d
 <body>
   <div class="container">
     <h1>📊 [Presentation Title]</h1>
-    <p>[N] slides — ready to download</p>
-    <button class="btn" id="downloadBtn" onclick="generateAndDownload()">
-      ⬇️ Download .pptx
-    </button>
+    <p class="subtitle">[N] slides — loading library...</p>
+    <button class="btn" id="downloadBtn" disabled>⏳ Loading...</button>
     <div class="status" id="status"></div>
     <div class="preview">
       <h3>Slide outline</h3>
@@ -624,22 +624,50 @@ Use a \`text/html\` artifact that loads **pptxgenjs** from CDN and generates a d
     </div>
   </div>
   <script>
+  // === Dynamic script loader with retry (matches ResearchSlides.tsx pattern) ===
+  var PPTX_CDNS = [
+    'https://cdn.jsdelivr.net/npm/pptxgenjs@4/dist/pptxgen.bundle.js',
+    'https://unpkg.com/pptxgenjs@4/dist/pptxgen.bundle.js'
+  ];
+
+  function loadScript(url) {
+    return new Promise(function(resolve, reject) {
+      if (typeof PptxGenJS !== 'undefined') { resolve(); return; }
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = function() { reject(new Error('Failed to load: ' + url)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function loadPptxGenJS() {
+    for (var i = 0; i < PPTX_CDNS.length; i++) {
+      try {
+        await loadScript(PPTX_CDNS[i]);
+        if (typeof PptxGenJS !== 'undefined') return;
+      } catch (e) { console.warn(e.message); }
+    }
+    throw new Error('Could not load pptxgenjs from any CDN');
+  }
+
   async function generateAndDownload() {
-    const btn = document.getElementById('downloadBtn');
-    const status = document.getElementById('status');
+    var btn = document.getElementById('downloadBtn');
+    var status = document.getElementById('status');
     btn.disabled = true;
     btn.textContent = '⏳ Generating...';
     status.textContent = 'Creating your presentation...';
+    status.className = 'status';
 
     try {
-      const pptx = new PptxGenJS();
+      var pptx = new PptxGenJS();
       pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches (16:9)
       pptx.author = 'Phở Chat';
       pptx.subject = '[Topic]';
       pptx.title = '[Presentation Title]';
 
       // === SLIDE 1: Title ===
-      let slide = pptx.addSlide();
+      var slide = pptx.addSlide();
       slide.background = { color: '0F172A' };
       slide.addText('[Title]', {
         x: 0.5, y: 2.0, w: '90%', h: 1.5,
@@ -657,19 +685,38 @@ Use a \`text/html\` artifact that loads **pptxgenjs** from CDN and generates a d
       await pptx.writeFile({ fileName: '[filename].pptx' });
 
       btn.textContent = '✅ Downloaded!';
-      status.innerHTML = '<span class="success">File saved! Open it in PowerPoint or Google Slides.</span>';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '⬇️ Download again'; }, 3000);
+      status.className = 'status success';
+      status.textContent = 'File saved! Open it in PowerPoint or Google Slides.';
+      setTimeout(function() { btn.disabled = false; btn.textContent = '⬇️ Download again'; }, 3000);
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = '⬇️ Download .pptx';
+      btn.textContent = '⬇️ Retry Download';
+      status.className = 'status error';
       status.textContent = 'Error: ' + err.message;
     }
   }
 
-  // Auto-generate on load
-  window.addEventListener('load', () => {
-    setTimeout(generateAndDownload, 500);
-  });
+  // === Initialize: load library first, then enable download ===
+  (async function() {
+    var btn = document.getElementById('downloadBtn');
+    var status = document.getElementById('status');
+    var subtitle = document.querySelector('.subtitle');
+    try {
+      status.textContent = 'Loading pptxgenjs library...';
+      await loadPptxGenJS();
+      btn.disabled = false;
+      btn.textContent = '⬇️ Download .pptx';
+      btn.onclick = generateAndDownload;
+      subtitle.textContent = '[N] slides — ready to download';
+      status.textContent = '';
+      // Auto-download on first load
+      generateAndDownload();
+    } catch (err) {
+      btn.textContent = '❌ Library failed to load';
+      status.className = 'status error';
+      status.textContent = err.message + ' — try refreshing the page';
+    }
+  })();
   </script>
 </body>
 </html>

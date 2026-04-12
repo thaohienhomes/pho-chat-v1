@@ -84,7 +84,7 @@ const HTMLRenderer = memo<HTMLRendererProps>(({ htmlContent, width = '100%', hei
   return (
     <iframe
       ref={iframeRef}
-      sandbox="allow-scripts allow-same-origin"
+      sandbox="allow-scripts allow-same-origin allow-downloads"
       src={blobUrl}
       style={{ border: 'none', height, width }}
       title="html-renderer"
