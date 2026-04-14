@@ -4,7 +4,12 @@
  */
 import { eq, sql } from 'drizzle-orm';
 
-import { canUseTier, getDailyTierLimit, getScientificSkillsLimit } from '@/config/pricing';
+import {
+  canUseTier,
+  getDailyRequestCap,
+  getDailyTierLimit,
+  getScientificSkillsLimit,
+} from '@/config/pricing';
 import { users } from '@/database/schemas';
 import { usageLogs } from '@/database/schemas/usage';
 import { getServerDB } from '@/database/server';
@@ -190,10 +195,7 @@ export async function processModelUsage(
       updatePayload.dailyTier2Usage = 0;
       updatePayload.dailyTier3Usage = 0;
     }
-    await db
-      .update(users)
-      .set(updatePayload)
-      .where(eq(users.id, userId));
+    await db.update(users).set(updatePayload).where(eq(users.id, userId));
 
     if (process.env.NODE_ENV !== 'production') {
       if (isFree) {
@@ -485,4 +487,59 @@ export async function checkTierAccess(
     remaining: dailyLimit - newUsage,
     slotAcquired: true,
   };
+}
+
+// ============================================================================
+// DAILY REQUEST CAP — Circuit breaker per user per day
+// Uses existing tier counters from getUserCreditBalance() (no extra DB query)
+// Resets at 00:00 UTC+7 (Vietnam timezone)
+// ============================================================================
+
+/** Get today's date string in Vietnam timezone (UTC+7) for comparison */
+function getVietnamDateString(date: Date = new Date()): string {
+  // UTC+7: add 7 hours in milliseconds
+  const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return vnTime.toISOString().slice(0, 10);
+}
+
+/**
+ * Check if user has exceeded their daily request cap.
+ * Uses the tier usage counters already fetched by getUserCreditBalance().
+ * Returns { allowed, reason?, dailyRequestCap, totalUsedToday }.
+ */
+export function checkDailyRequestCap(
+  creditStatus: NonNullable<Awaited<ReturnType<typeof getUserCreditBalance>>>,
+  planId: string,
+): TierAccessResult & { dailyRequestCap?: number; totalUsedToday?: number } {
+  const cap = getDailyRequestCap(planId);
+
+  // Check if lastUsageDate is the same day in Vietnam timezone
+  const todayVN = getVietnamDateString();
+  const lastDateVN = creditStatus.lastUsageDate
+    ? getVietnamDateString(new Date(creditStatus.lastUsageDate))
+    : '';
+
+  // If different day (VN timezone), counters will be reset — allow
+  if (lastDateVN !== todayVN) {
+    return { allowed: true, dailyRequestCap: cap, totalUsedToday: 0 };
+  }
+
+  const totalUsedToday =
+    (creditStatus.dailyTier1Usage || 0) +
+    (creditStatus.dailyTier2Usage || 0) +
+    (creditStatus.dailyTier3Usage || 0);
+
+  if (totalUsedToday >= cap) {
+    return {
+      allowed: false,
+      dailyRequestCap: cap,
+      reason:
+        `⚠️ Bạn đã đạt giới hạn ${cap} tin nhắn/ngày. ` +
+        `Nâng cấp gói để sử dụng thêm.\n\n` +
+        `🔄 Hạn mức reset lúc 0:00 (giờ Việt Nam).`,
+      totalUsedToday,
+    };
+  }
+
+  return { allowed: true, dailyRequestCap: cap, totalUsedToday };
 }

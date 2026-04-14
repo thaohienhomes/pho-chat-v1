@@ -1,0 +1,268 @@
+﻿{
+  "results": [
+    {
+      "model": "anthropic/claude-3.5-sonnet",
+      "total_cost": 0,
+      "market_cost": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 3
+    },
+    {
+      "model": "anthropic/claude-haiku-4.5",
+      "total_cost": 0.435986,
+      "market_cost": 0.435986,
+      "input_tokens": 333826,
+      "output_tokens": 20432,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 13
+    },
+    {
+      "model": "anthropic/claude-opus-4.6",
+      "total_cost": 144.01574,
+      "market_cost": 144.01574,
+      "input_tokens": 20732119,
+      "output_tokens": 1140869,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 376
+    },
+    {
+      "model": "anthropic/claude-sonnet-4",
+      "total_cost": 1.129335,
+      "market_cost": 1.129335,
+      "input_tokens": 119250,
+      "output_tokens": 51439,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 35
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.5",
+      "total_cost": 5.620602,
+      "market_cost": 5.620602,
+      "input_tokens": 1204879,
+      "output_tokens": 133731,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 47
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.6",
+      "total_cost": 40.819263,
+      "market_cost": 40.819263,
+      "input_tokens": 10322812,
+      "output_tokens": 532175,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 393
+    },
+    {
+      "model": "deepseek/deepseek-r1",
+      "total_cost": 0,
+      "market_cost": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 1
+    },
+    {
+      "model": "deepseek/deepseek-v3",
+      "total_cost": 0.69061146,
+      "market_cost": 0.69061146,
+      "input_tokens": 837233,
+      "output_tokens": 59665,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 45
+    },
+    {
+      "model": "google/gemini-2.0-flash",
+      "total_cost": 1.34843235,
+      "market_cost": 1.34843235,
+      "input_tokens": 7463774,
+      "output_tokens": 452374,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 693
+    },
+    {
+      "model": "google/gemini-2.5-flash",
+      "total_cost": 58.23723658,
+      "market_cost": 58.23723658,
+      "input_tokens": 121737096,
+      "output_tokens": 5858445,
+      "cached_input_tokens": 11642096,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 3981898,
+      "request_count": 4223
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "total_cost": 0.090293,
+      "market_cost": 0.090293,
+      "input_tokens": 633472,
+      "output_tokens": 58345,
+      "cached_input_tokens": 78300,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 26637,
+      "request_count": 51
+    },
+    {
+      "model": "google/gemini-2.5-pro",
+      "total_cost": 27.60493425,
+      "market_cost": 27.60493425,
+      "input_tokens": 6257654,
+      "output_tokens": 1012379,
+      "cached_input_tokens": 642914,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 1015617,
+      "request_count": 619
+    },
+    {
+      "model": "google/gemini-3-flash",
+      "total_cost": 1.29865365,
+      "market_cost": 1.29865365,
+      "input_tokens": 1356767,
+      "output_tokens": 163065,
+      "cached_input_tokens": 194233,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 52491,
+      "request_count": 82
+    },
+    {
+      "model": "google/gemini-3.1-flash-lite-preview",
+      "total_cost": 2.10035119,
+      "market_cost": 2.10035119,
+      "input_tokens": 7439818,
+      "output_tokens": 202961,
+      "cached_input_tokens": 357286,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 299
+    },
+    {
+      "model": "google/gemini-3.1-pro-preview",
+      "total_cost": 102.9670432,
+      "market_cost": 102.9670432,
+      "input_tokens": 41136482,
+      "output_tokens": 1866835,
+      "cached_input_tokens": 9992065,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 549847,
+      "request_count": 803
+    },
+    {
+      "model": "moonshotai/kimi-k2.5",
+      "total_cost": 0.1136934,
+      "market_cost": 0.1136934,
+      "input_tokens": 115484,
+      "output_tokens": 14801,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 8
+    },
+    {
+      "model": "nvidia/nemotron-3-nano-30b-a3b",
+      "total_cost": 0,
+      "market_cost": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 3
+    },
+    {
+      "model": "openai/gpt-4.1",
+      "total_cost": 0.041462,
+      "market_cost": 0.041462,
+      "input_tokens": 15767,
+      "output_tokens": 2225,
+      "cached_input_tokens": 5248,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 5
+    },
+    {
+      "model": "openai/gpt-4o",
+      "total_cost": 0.00818,
+      "market_cost": 0.00818,
+      "input_tokens": 3068,
+      "output_tokens": 51,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 2
+    },
+    {
+      "model": "openai/gpt-5.2",
+      "total_cost": 60.1826428,
+      "market_cost": 60.1826428,
+      "input_tokens": 29838936,
+      "output_tokens": 687378,
+      "cached_input_tokens": 1438336,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 643
+    },
+    {
+      "model": "openai/gpt-5.3-codex",
+      "total_cost": 8.15631005,
+      "market_cost": 8.15631005,
+      "input_tokens": 4404347,
+      "output_tokens": 50079,
+      "cached_input_tokens": 160256,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 36
+    },
+    {
+      "model": "openai/gpt-5.4",
+      "total_cost": 107.103788,
+      "market_cost": 107.103788,
+      "input_tokens": 28083759,
+      "output_tokens": 371497,
+      "cached_input_tokens": 943104,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 255
+    },
+    {
+      "model": "openai/text-embedding-3-small",
+      "total_cost": 0.00579552,
+      "market_cost": 0.00579552,
+      "input_tokens": 289776,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0,
+      "request_count": 746
+    },
+    {
+      "model": "xai/grok-4",
+      "total_cost": 0.110241,
+      "market_cost": 0.110241,
+      "input_tokens": 23636,
+      "output_tokens": 3751,
+      "cached_input_tokens": 11839,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 1239,
+      "request_count": 2
+    }
+  ]
+}

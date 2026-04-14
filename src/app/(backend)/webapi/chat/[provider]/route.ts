@@ -19,6 +19,7 @@ import {
   isUsageTrackingEnabled,
 } from '@/server/services/FeatureFlags';
 import {
+  checkDailyRequestCap,
   checkTierAccess,
   getUserCreditBalance,
   processModelUsage,
@@ -429,6 +430,28 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           // Clerk lookup failed, continue with DB planId
         }
       }
+
+      // ============  2.0. Daily Request Cap (Circuit Breaker)  ============ //
+      // Prevents single user from burning excessive cost in one day
+      if (prefetchedCreditStatus) {
+        const capCheck = checkDailyRequestCap(prefetchedCreditStatus, userPlanId);
+        if (!capCheck.allowed) {
+          console.warn(
+            `🚫 Daily request cap reached: ${capCheck.totalUsedToday}/${capCheck.dailyRequestCap} ` +
+              `(Plan: ${userPlanId}, User: ${jwtPayload.userId})`,
+          );
+          return createErrorResponse(AgentRuntimeErrorType.InsufficientQuota, {
+            error: {
+              message:
+                capCheck.reason ||
+                'Bạn đã đạt giới hạn sử dụng hôm nay. Nâng cấp gói để sử dụng thêm.',
+            },
+            provider: 'pho-chat',
+            upgradeUrl: '/settings/subscription',
+          });
+        }
+      }
+
       const modelTier = getModelTier(data.model);
 
       // ============  1.5. Per-request input token cap  ============ //

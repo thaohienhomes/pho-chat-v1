@@ -233,11 +233,14 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
 
     try {
       const runtime = await initModelRuntimeWithUserPayload(provider, {});
-      const response = await runtime.chat({
-        messages: messages.map((m: any) => ({ content: m.content, role: m.role })),
-        model: modelId,
-        temperature: body.temperature ?? 0.6,
-      } as any);
+      const response = await runtime.chat(
+        {
+          messages: messages.map((m: any) => ({ content: m.content, role: m.role })),
+          model: modelId,
+          temperature: body.temperature ?? 0.6,
+        } as any,
+        { user: user.clerkUserId },
+      );
 
       usedProvider = provider;
 
