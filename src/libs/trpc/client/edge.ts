@@ -6,8 +6,12 @@ import { isDesktop } from '@/const/version';
 import type { EdgeRouter } from '@/server/routers/edge';
 import { fetchWithDesktopRemoteRPC } from '@/utils/electron/desktopRemoteRPCFetch';
 
+import { forceReauth, shouldForceReauth, silentRefresh } from './authRecovery';
+
 // Priority 3: Retry once on UNAUTHORIZED — waits for Clerk auth hydration via store polling
-// Prevents SSO callback race condition where edge calls fire before token is ready
+// Prevents SSO callback race condition where edge calls fire before token is ready.
+// Uses the shared authRecovery singleflight so a burst of parallel 401s
+// (e.g. inbox load) kicks off a single Clerk refresh instead of one per call.
 const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
   return ({ op, next }) =>
     observable((observer) => {
@@ -38,21 +42,17 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
                 setTimeout(resolve, 5000); // Safety: max 5s wait
               });
 
-              // Try to silently refresh the Clerk session token
-              try {
-                const clerk = (window as any).Clerk;
-                if (clerk?.session) {
-                  await clerk.session.getToken({ skipCache: true });
-                }
-              } catch {
-                // Token refresh failed — will fall through to error
-              }
-
-              // After waiting, only retry if user is actually signed in
+              // Singleflight refresh shared with lambda client.
+              const refreshed = await silentRefresh();
               const updated = useUserStore.getState();
-              if (updated.isSignedIn) {
+
+              if (refreshed && updated.isSignedIn) {
                 attempt();
                 return;
+              }
+
+              if (shouldForceReauth()) {
+                forceReauth();
               }
             }
             observer.error(err);

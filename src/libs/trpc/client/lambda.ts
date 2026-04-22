@@ -8,10 +8,16 @@ import superjson from 'superjson';
 import { isDesktop } from '@/const/version';
 import type { LambdaRouter } from '@/server/routers/lambda';
 
+import { captureAuthExpired, forceReauth, shouldForceReauth, silentRefresh } from './authRecovery';
+
 const log = debug('lobe-image:lambda-client');
 
 // Retry once on UNAUTHORIZED — waits for Clerk auth hydration via store polling
-// Prevents SSO callback race condition where Lambda calls fire before token is ready
+// Prevents SSO callback race condition where Lambda calls fire before token is ready.
+// NOTE: In the link chain this MUST sit inside errorHandlingLink so that a
+// successful retry swallows the 401 before errorHandlingLink sees it — otherwise
+// every parallel 401 in an inbox burst fires auth_session_expired even when
+// recovery is still in progress.
 const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
   return ({ op, next }) =>
     observable((observer) => {
@@ -43,21 +49,18 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
                 setTimeout(resolve, 8000); // Max 8s wait (Clerk CDN slow in VN)
               });
 
-              // Try to silently refresh the Clerk session token
-              try {
-                const clerk = (window as any).Clerk;
-                if (clerk?.session) {
-                  await clerk.session.getToken({ skipCache: true });
-                }
-              } catch {
-                // Token refresh failed — will fall through to error
-              }
-
-              // After waiting, only retry if user is actually signed in
+              // Singleflight refresh — parallel 401s share one Clerk call.
+              const refreshed = await silentRefresh();
               const updated = useUserStore.getState();
-              if (updated.isSignedIn) {
+
+              if (refreshed && updated.isSignedIn) {
                 attempt();
                 return;
+              }
+
+              // Recovery failed: count the failure and escalate if we're stuck.
+              if (shouldForceReauth()) {
+                forceReauth();
               }
             }
             observer.error(err);
@@ -94,11 +97,10 @@ const errorHandlingLink: TRPCLink<LambdaRouter> = () => {
             // This allows proper error handling in the catch block to create ChatErrorType.InvalidClerkUser
             switch (status) {
               case 401: {
-                // Track expired sessions via PostHog
-                (window as any).posthog?.capture('auth_session_expired', {
-                  pathname: window.location.pathname,
-                  url: window.location.href,
-                });
+                // Only reached after retryOnUnauthorizedLink has already tried
+                // to refresh + replay the request. Capture is throttled to
+                // avoid the "8 events in 15ms" storm we saw in production.
+                captureAuthExpired();
                 break;
               }
 
@@ -164,7 +166,10 @@ const customHttpBatchLink = httpBatchLink({
 });
 
 // 3. assembly links
-const links = [retryOnUnauthorizedLink, errorHandlingLink, customHttpBatchLink];
+// Order matters: errorHandlingLink is OUTSIDE retryOnUnauthorizedLink so the
+// retry gets a chance to recover before the 401 reaches the error handler.
+// If retry succeeds, errorHandlingLink never sees a 401.
+const links = [errorHandlingLink, retryOnUnauthorizedLink, customHttpBatchLink];
 
 export const lambdaClient = createTRPCClient<LambdaRouter>({
   links,
