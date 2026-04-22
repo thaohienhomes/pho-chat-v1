@@ -1,4 +1,4 @@
-import { CheckCircleFilled } from '@ant-design/icons';
+import { CheckCircleFilled, CloseCircleFilled } from '@ant-design/icons';
 import { Icon, Text } from '@lobehub/ui';
 import { Progress } from 'antd';
 import { useTheme } from 'antd-style';
@@ -61,6 +61,17 @@ const UploadStatus = memo<UploadStateProps>(({ status, size, uploadState }) => {
           <CheckCircleFilled style={{ color: theme.colorSuccess, fontSize: 12 }} />
           <Text style={{ fontSize: 12 }} type={'secondary'}>
             {formatSize(size)}
+          </Text>
+        </Flexbox>
+      );
+    }
+
+    case 'error': {
+      return (
+        <Flexbox align={'center'} gap={4} horizontal>
+          <CloseCircleFilled style={{ color: theme.colorError, fontSize: 12 }} />
+          <Text style={{ color: theme.colorError, fontSize: 12 }}>
+            {t('upload.preview.status.error')}
           </Text>
         </Flexbox>
       );

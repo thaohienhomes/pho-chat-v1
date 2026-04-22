@@ -149,9 +149,14 @@ export const createFileSlice: StateCreator<
             description,
             message: t('upload.uploadFailed', { ns: 'error' }),
           });
-        }
 
-        dispatchChatUploadFileList({ id: file.name, type: 'removeFile' });
+          // Keep the failed file visible with an error status so the user has a
+          // persistent indicator beyond the toast (which auto-dismisses). They
+          // can still dismiss it manually via the existing remove button.
+          dispatchChatUploadFileList({ id: file.name, status: 'error', type: 'updateFileStatus' });
+        } else {
+          dispatchChatUploadFileList({ id: file.name, type: 'removeFile' });
+        }
       }
 
       if (!fileResult) return;
