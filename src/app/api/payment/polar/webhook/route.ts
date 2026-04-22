@@ -128,16 +128,6 @@ export async function POST(req: Request) {
       type: event.type,
     });
 
-    // Temporary debug logging — remove after confirming env var mapping
-    const _debugProductId = event.data?.product_id;
-    console.log('[Polar Webhook Debug]', {
-      envPremiumMonthly: process.env.POLAR_PRODUCT_PREMIUM_MONTHLY_ID,
-      envStarterMonthly: process.env.POLAR_PRODUCT_STARTER_MONTHLY_ID,
-      incomingProductId: _debugProductId,
-      mapHasProduct: !!POLAR_PRODUCT_MAP[_debugProductId],
-      mapKeys: Object.keys(POLAR_PRODUCT_MAP),
-    });
-
     // Handle successful payment
     if (event.type === 'checkout.completed' || event.type === 'order.created') {
       const customer_email = event.data.customer_email || event.data.customer?.email;
