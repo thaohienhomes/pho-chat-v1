@@ -12,8 +12,7 @@
  */
 
 // Vietnamese-specific diacritics + đ/Đ. Presence of any of these = Vietnamese.
-const VIETNAMESE_REGEX =
-  /[À-ÃÈ-ÊÌÍÒ-ÕÙÚÝà-ãè-êìíò-õùúýĂăĐđĨĩŨũƠơƯưẠ-ỹ]/;
+const VIETNAMESE_REGEX = /[À-ÃÈ-ÊÌÍÒ-ÕÙÚÝà-ãè-êìíò-õùúýĂăĐđĨĩŨũƠơƯưẠ-ỹ]/;
 
 // Anything outside printable ASCII (U+0020..U+007E) is non-English-friendly.
 const NON_ASCII_REGEX = /[^\t\n\r -~]/;
@@ -113,8 +112,19 @@ export const buildSearchQuery = async (
     const cleaned = raw
       .replaceAll(/\s+/g, ' ')
       .trim()
+      // Strip leading prefixes the model loves to add ("Query:", "Search query:")
       .replace(/^(query|search query|english query)\s*:\s*/i, '')
+      // Strip surrounding quotes
       .replaceAll(/^["']|["']$/g, '')
+      // Strip trailing chat-template / stop-sequence artifacts. Production
+      // observed e.g. "GLP-1 ... effectsstop" (Gemini occasionally emits a
+      // bare "stop" glued to the last word) plus the usual <|im_end|> /
+      // <|endoftext|> / </stop> tokens. Conservative: the (\w)stop$ rule only
+      // strips when "stop" has a word char immediately before and is at the
+      // very end — so "non-stop" (dash) and "stop bleeding" (mid-query) are
+      // left alone.
+      .replace(/(<\|?im_end\|?>|<\|?endoftext\|?>|<\/?stop>)$/i, '')
+      .replace(/(\w)stop$/i, '$1')
       .trim()
       .slice(0, 240);
 
