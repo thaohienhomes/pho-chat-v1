@@ -32,7 +32,6 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
-
 import { buildSearchQuery } from '@/utils/research/buildSearchQuery';
 
 const { TextArea } = Input;
@@ -943,15 +942,9 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
       setProgressLines((prev) => [...prev, '🌐 Đang chuẩn bị truy vấn tìm kiếm...']);
       const queryInfo = await buildSearchQuery(question, callAI, model);
       if (queryInfo.translated) {
-        setProgressLines((prev) => [
-          ...prev,
-          `🌐 Dịch sang tiếng Anh: "${queryInfo.searchQuery}"`,
-        ]);
+        setProgressLines((prev) => [...prev, `🌐 Dịch sang tiếng Anh: "${queryInfo.searchQuery}"`]);
       } else if (queryInfo.fellBackToOriginal) {
-        setProgressLines((prev) => [
-          ...prev,
-          '⚠️ Dịch truy vấn thất bại, dùng câu hỏi gốc.',
-        ]);
+        setProgressLines((prev) => [...prev, '⚠️ Dịch truy vấn thất bại, dùng câu hỏi gốc.']);
       }
       (window as any).posthog?.capture('research_query_translated', {
         detected_language: queryInfo.detectedLanguage,
@@ -1009,6 +1002,12 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         setStartTime(null);
         return;
       }
+
+      // Defensive: clear gate flag in case a prior racing instance left it set.
+      // The useEffect that auto-triggers startResearch can fire twice across
+      // re-renders; an older raw-VN search may have set noPapersFound=true
+      // before the translated re-run finished and produced papers.
+      setNoPapersFound(false);
 
       const sourceSummary = [
         pubmedCount > 0 ? `PubMed: ${pubmedCount}` : '',
@@ -1177,16 +1176,17 @@ Write the full article now in markdown format.`;
           const validAuthors = new Set(
             pubmedPapers
               .flatMap((p) =>
-                p.authors
-                  .split(/[,;]/)
-                  .map((a) => a.trim().toLowerCase().split(/\s+/)[0])
+                p.authors.split(/[,;]/).map((a) => a.trim().toLowerCase().split(/\s+/)[0]),
               )
               .filter(Boolean),
           );
 
           let invalidCount = 0;
           for (const m of matches) {
-            const citedAuthor = m[1].trim().toLowerCase().split(/[\s,]+/)[0];
+            const citedAuthor = m[1]
+              .trim()
+              .toLowerCase()
+              .split(/[\s,]+/)[0];
             if (citedAuthor && !validAuthors.has(citedAuthor)) {
               invalidCount++;
             }
@@ -2169,11 +2169,7 @@ ER  - `;
                   />
                 </Flexbox>
               ))}
-              <Button
-                icon={<Search size={14} />}
-                onClick={() => startResearch()}
-                type="primary"
-              >
+              <Button icon={<Search size={14} />} onClick={() => startResearch()} type="primary">
                 Tiếp tục nghiên cứu →
               </Button>
             </>
@@ -2194,13 +2190,11 @@ ER  - `;
         >
           <Flexbox align={'center'} gap={8} horizontal>
             <span style={{ fontSize: 18 }}>⚠️</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>
-              Không tìm thấy bài báo phù hợp
-            </span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Không tìm thấy bài báo phù hợp</span>
           </Flexbox>
           <span style={{ color: '#888', fontSize: 12 }}>
-            Cả PubMed và Semantic Scholar đều không trả về bài báo cho truy vấn này. Việc viết
-            bài tổng quan không có y văn sẽ không có trích dẫn xác thực và{' '}
+            Cả PubMed và Semantic Scholar đều không trả về bài báo cho truy vấn này. Việc viết bài
+            tổng quan không có y văn sẽ không có trích dẫn xác thực và{' '}
             <strong>không khuyến nghị cho mục đích lâm sàng</strong>.
           </span>
           <Flexbox gap={6} horizontal style={{ flexWrap: 'wrap' }}>
@@ -2246,68 +2240,70 @@ ER  - `;
       {/* ────── PHASE: RESEARCH + AGENTS ────── */}
       {(phase === 'research' || phase === 'outline' || phase === 'article' || phase === 'done') &&
         !noPapersFound && (
-        <Flexbox gap={8}>
-          <Flexbox align={'center'} gap={8} horizontal justify={'space-between'}>
-            <Flexbox align={'center'} gap={8} horizontal>
-              <span style={{ fontWeight: 600 }}>{'🤖 AI Research Agents:'}</span>
+          <Flexbox gap={8}>
+            <Flexbox align={'center'} gap={8} horizontal justify={'space-between'}>
+              <Flexbox align={'center'} gap={8} horizontal>
+                <span style={{ fontWeight: 600 }}>{'🤖 AI Research Agents:'}</span>
+                {phase === 'research' && (
+                  <Tag color="processing" style={{ fontSize: 11 }}>
+                    ⏱️ {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} —{' '}
+                    {agents.filter((a) => a.status === 'done').length}/{agents.length} xong
+                  </Tag>
+                )}
+              </Flexbox>
               {phase === 'research' && (
-                <Tag color="processing" style={{ fontSize: 11 }}>
-                  ⏱️ {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} —{' '}
-                  {agents.filter((a) => a.status === 'done').length}/{agents.length} xong
-                </Tag>
+                <Button danger icon={<StopCircle size={14} />} onClick={handleStop} size="small">
+                  Dừng
+                </Button>
               )}
             </Flexbox>
-            {phase === 'research' && (
-              <Button danger icon={<StopCircle size={14} />} onClick={handleStop} size="small">
-                Dừng
-              </Button>
-            )}
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(2, 1fr)' }}>
+              {agents.map((agent, idx) => (
+                <div
+                  className={cx(
+                    styles.agentCard,
+                    agent.status === 'running' && styles.agentRunning,
+                    agent.status === 'done' && styles.agentDone,
+                    agent.status === 'error' && styles.agentError,
+                  )}
+                  key={agent.name}
+                  onClick={() => setExpandedAgent(expandedAgent === idx ? null : idx)}
+                >
+                  <Flexbox align={'center'} gap={6} horizontal>
+                    <span>{AGENTS[idx].emoji}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{agent.name}</span>
+                    {agent.status === 'running' && <Loader2 className="animate-spin" size={12} />}
+                    {agent.status === 'done' && (
+                      <Tag color="success" style={{ fontSize: 10 }}>
+                        \u2713
+                      </Tag>
+                    )}
+                    {agent.status === 'error' && (
+                      <Tag color="error" style={{ fontSize: 10 }}>
+                        \u2717
+                      </Tag>
+                    )}
+                    {agent.status === 'done' && (
+                      <Tooltip
+                        title={
+                          expandedAgent === idx ? '\u1EA8n chi ti\u1EBFt' : 'Xem chi ti\u1EBFt'
+                        }
+                      >
+                        {expandedAgent === idx ? <EyeOff size={12} /> : <Eye size={12} />}
+                      </Tooltip>
+                    )}
+                  </Flexbox>
+                  <span style={{ color: '#888', fontSize: 11 }}>{AGENTS[idx].desc}</span>
+                  {expandedAgent === idx && agent.content && (
+                    <div className={styles.agentContent}>
+                      <Markdown>{agent.content.slice(0, 3000)}</Markdown>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </Flexbox>
-          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(2, 1fr)' }}>
-            {agents.map((agent, idx) => (
-              <div
-                className={cx(
-                  styles.agentCard,
-                  agent.status === 'running' && styles.agentRunning,
-                  agent.status === 'done' && styles.agentDone,
-                  agent.status === 'error' && styles.agentError,
-                )}
-                key={agent.name}
-                onClick={() => setExpandedAgent(expandedAgent === idx ? null : idx)}
-              >
-                <Flexbox align={'center'} gap={6} horizontal>
-                  <span>{AGENTS[idx].emoji}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{agent.name}</span>
-                  {agent.status === 'running' && <Loader2 className="animate-spin" size={12} />}
-                  {agent.status === 'done' && (
-                    <Tag color="success" style={{ fontSize: 10 }}>
-                      \u2713
-                    </Tag>
-                  )}
-                  {agent.status === 'error' && (
-                    <Tag color="error" style={{ fontSize: 10 }}>
-                      \u2717
-                    </Tag>
-                  )}
-                  {agent.status === 'done' && (
-                    <Tooltip
-                      title={expandedAgent === idx ? '\u1EA8n chi ti\u1EBFt' : 'Xem chi ti\u1EBFt'}
-                    >
-                      {expandedAgent === idx ? <EyeOff size={12} /> : <Eye size={12} />}
-                    </Tooltip>
-                  )}
-                </Flexbox>
-                <span style={{ color: '#888', fontSize: 11 }}>{AGENTS[idx].desc}</span>
-                {expandedAgent === idx && agent.content && (
-                  <div className={styles.agentContent}>
-                    <Markdown>{agent.content.slice(0, 3000)}</Markdown>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Flexbox>
-      )}
+        )}
 
       {/* PubMed Papers */}
       {pubmedPapers.length > 0 &&
