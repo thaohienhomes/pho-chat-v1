@@ -662,6 +662,12 @@ const DeepResearchBody = memo(() => {
   const abortRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const startResearchRef = useRef<(() => void) | undefined>(undefined);
+  // Bug H fix — guard against the auto-trigger useEffect firing
+  // startResearch multiple times (StrictMode double-invoke, parent
+  // re-render reconciliation, race between phase change and agent state).
+  // Reset to false when phase changes AWAY from 'research' so re-entry
+  // (Reset → new question) still works.
+  const hasAutoStartedRef = useRef(false);
 
   // Consume pendingResearchQuery from portal store (auto-fill from chat suggestion)
   const pendingQuery = useChatStore((s) => s.pendingResearchQuery);
@@ -1031,8 +1037,17 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
 
   // Auto-trigger research when phase transitions to 'research' but agents haven't started
   useEffect(() => {
-    if (phase === 'research' && agents.every((a) => a.status === 'idle')) {
+    if (
+      phase === 'research' &&
+      agents.every((a) => a.status === 'idle') &&
+      !hasAutoStartedRef.current
+    ) {
+      hasAutoStartedRef.current = true;
       startResearch();
+    }
+    // Reset flag when leaving research phase so re-entry works
+    if (phase !== 'research') {
+      hasAutoStartedRef.current = false;
     }
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2223,7 +2238,14 @@ ER  - `;
                   />
                 </Flexbox>
               ))}
-              <Button icon={<Search size={14} />} onClick={() => startResearch()} type="primary">
+              <Button
+                icon={<Search size={14} />}
+                onClick={() => {
+                  hasAutoStartedRef.current = true;
+                  startResearch();
+                }}
+                type="primary"
+              >
                 Tiếp tục nghiên cứu →
               </Button>
             </>
@@ -2270,6 +2292,7 @@ ER  - `;
               onClick={() => {
                 setNoPapersFound(false);
                 setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                hasAutoStartedRef.current = true;
                 startResearch();
               }}
               size="small"
@@ -2281,6 +2304,7 @@ ER  - `;
               icon={<Play size={12} />}
               onClick={() => {
                 setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                hasAutoStartedRef.current = true;
                 startResearch({ forceContinueWithoutLiterature: true });
               }}
               size="small"
