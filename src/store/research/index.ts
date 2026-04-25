@@ -428,10 +428,23 @@ export const useResearchStore = create<ResearchState>()(
         },
 
         extractPICO: async (query) => {
-          const { translatedQuery } = get();
-          // Prefer the English translated query when available — keyword
-          // matching against MeSH-style terminology is far more reliable.
-          const queryForExtraction = translatedQuery || query;
+          // ARCHITECTURAL NOTE for v2 port: any LLM-derived metadata (PICO,
+          // MeSH expansion, specialty hint, embeddings) MUST sequence AFTER
+          // translate, not parallel. Pattern: translate() → derive_metadata()
+          // → search().
+          //
+          // Phase 1.5.2 Bug E: previously read translatedQuery from state,
+          // which was either null (first run, raced with searchPapers) or
+          // STALE from a prior search. Now we call buildSearchQuery directly
+          // — it is cache-friendly so this is a no-op when searchPapers
+          // already translated the same input in the current session.
+          let queryForExtraction = query;
+          try {
+            const queryInfo = await buildSearchQuery(query, callAI, TRANSLATE_MODEL);
+            queryForExtraction = queryInfo.searchQuery;
+          } catch (e) {
+            console.warn('[extractPICO] translate failed, using raw query', e);
+          }
           const result = await llmExtractPICO(queryForExtraction, callAI, TRANSLATE_MODEL);
           set({ pico: result.pico }, false, 'extractPICO');
         },
