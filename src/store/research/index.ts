@@ -749,6 +749,28 @@ export const useResearchStore = create<ResearchState>()(
         },
       }),
       {
+        migrate: (persistedState: any, fromVersion: number) => {
+          // v0/v1 had ArXiv on by default for clinical queries.
+          // v2 removes ArXiv from default to reduce CS-paper noise.
+          // Only auto-migrate users who still have the legacy 4-source default;
+          // preserve any explicit customization (added or removed sources).
+          if (fromVersion < 2 && persistedState) {
+            const oldSources: string[] = persistedState.selectedSources ?? [];
+            const looksLikeLegacyDefault =
+              oldSources.length === 4 &&
+              oldSources.includes('PubMed') &&
+              oldSources.includes('OpenAlex') &&
+              oldSources.includes('ArXiv') &&
+              oldSources.includes('ClinicalTrials.gov');
+            if (looksLikeLegacyDefault) {
+              return {
+                ...persistedState,
+                selectedSources: ['PubMed', 'OpenAlex', 'ClinicalTrials.gov'],
+              };
+            }
+          }
+          return persistedState;
+        },
         name: 'pho-research-store',
         partialize: (state) => ({
           activePhase: state.activePhase,
@@ -760,6 +782,7 @@ export const useResearchStore = create<ResearchState>()(
           selectedSources: state.selectedSources,
           totalResults: state.totalResults,
         }),
+        version: 2,
       },
     ),
     { name: 'ResearchStore' },
