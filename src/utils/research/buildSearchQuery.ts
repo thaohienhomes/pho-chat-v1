@@ -46,7 +46,17 @@ Rules:
 - Use standard English medical terminology (MeSH-style when natural, e.g., "growth hormone", "central precocious puberty", "GLP-1 receptor agonists").
 - Preserve every clinically meaningful concept (population, intervention, comparison, outcome).
 - Drop filler words ("xin", "cho tôi", "viết", "tổng quan về", "đánh giá", "review", "search", "tìm kiếm").
-- Output ONLY the search query, no quotes, no explanation, no leading "Query:", maximum 25 words.
+- Output ONLY the search query on a single line, no quotes, no markdown, no code fence, no explanation, no leading "Query:", maximum 25 words.
+
+Examples:
+Input: "tổng quan tác động GLP1a lên khí sắc semaglutide"
+Output: GLP-1 receptor agonists semaglutide mood psychiatric effects
+
+Input: "vai trò của metformin trong tiền tiểu đường"
+Output: metformin prediabetes prevention
+
+Input: "tăng trưởng chiều cao trẻ SGA non tháng dùng GH"
+Output: growth hormone therapy small for gestational age preterm short stature
 
 Vietnamese question:
 ${question}
@@ -94,10 +104,17 @@ export const buildSearchQuery = async (
 
   try {
     const raw = await callAI(model, buildTranslatePrompt(trimmed), 'translate-search-query');
+    // NOTE: `String.prototype.replaceAll` throws TypeError when given a non-global
+    // RegExp. The anchored "Query:" prefix only matches once, so use `.replace`
+    // (single replacement) — using `replaceAll` here previously made every
+    // translation throw and silently fall back to the original VN query.
+    // Order matters: collapse whitespace + trim FIRST so the `^` anchors can
+    // actually match leading prefixes the model loves to add.
     const cleaned = raw
-      .replaceAll(/^["']|["']$/g, '')
-      .replaceAll(/^(query|search query|english query)\s*:\s*/i, '')
       .replaceAll(/\s+/g, ' ')
+      .trim()
+      .replace(/^(query|search query|english query)\s*:\s*/i, '')
+      .replaceAll(/^["']|["']$/g, '')
       .trim()
       .slice(0, 240);
 

@@ -3,7 +3,7 @@
 import { Button, Input, Tag } from '@lobehub/ui';
 import { InputNumber, Select, Slider, Spin } from 'antd';
 import { createStyles } from 'antd-style';
-import { ArrowRight, ExternalLink, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, ExternalLink, Pencil, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
@@ -144,6 +144,8 @@ const DiscoveryPhase = memo(() => {
     const totalResults = useResearchStore((s) => s.totalResults);
     const isSearching = useResearchStore((s) => s.isSearching);
     const searchError = useResearchStore((s) => s.searchError);
+    const noPapersFound = useResearchStore((s) => s.noPapersFound);
+    const translatedQuery = useResearchStore((s) => s.translatedQuery);
 
     const setSearchQuery = useResearchStore((s) => s.setSearchQuery);
     const toggleSource = useResearchStore((s) => s.toggleSource);
@@ -153,6 +155,11 @@ const DiscoveryPhase = memo(() => {
     const loadMoreResults = useResearchStore((s) => s.loadMoreResults);
     const hasMore = useResearchStore((s) => s.hasMore);
     const isLoadingMore = useResearchStore((s) => s.isLoadingMore);
+
+    const focusSearchInput = useCallback(() => {
+        const input = document.querySelector<HTMLInputElement>('input[placeholder*="câu hỏi"]');
+        input?.focus();
+    }, []);
 
     const [expandedAbstracts, setExpandedAbstracts] = useState<Set<string>>(new Set());
 
@@ -367,13 +374,73 @@ const DiscoveryPhase = memo(() => {
                 </Flexbox>
             )}
 
+            {/* No-papers gate (Phase 1.5) — surfaced when search succeeded with 0 results */}
+            {noPapersFound && !isSearching && (
+                <Flexbox
+                    gap={8}
+                    style={{
+                        background: 'rgba(234,179,8,0.08)',
+                        border: '1px solid rgba(234,179,8,0.4)',
+                        borderRadius: 8,
+                        marginTop: 4,
+                        padding: 12,
+                    }}
+                >
+                    <Flexbox align={'center'} gap={8} horizontal>
+                        <span style={{ fontSize: 18 }}>⚠️</span>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>
+                            Không tìm thấy bài báo phù hợp
+                        </span>
+                    </Flexbox>
+                    <span style={{ color: '#888', fontSize: 12, lineHeight: 1.55 }}>
+                        Cả {selectedSources.join(', ')} đều không trả về bài báo cho truy vấn này.
+                        {translatedQuery && (
+                            <>
+                                {' '}Đã dịch sang tiếng Anh: <code>{translatedQuery}</code>.
+                            </>
+                        )}
+                        {' '}Việc viết bài tổng quan không có y văn sẽ không có trích dẫn xác thực và{' '}
+                        <strong>không khuyến nghị cho mục đích lâm sàng</strong>.
+                    </span>
+                    <Flexbox gap={6} horizontal style={{ flexWrap: 'wrap' }}>
+                        <Button
+                            icon={<Pencil size={12} />}
+                            onClick={focusSearchInput}
+                            size={'small'}
+                            type={'primary'}
+                        >
+                            Tinh chỉnh câu hỏi
+                        </Button>
+                        <Button
+                            icon={<RefreshCw size={12} />}
+                            onClick={() => searchQuery && searchPapers(searchQuery)}
+                            size={'small'}
+                        >
+                            Thử lại
+                        </Button>
+                        <Button
+                            icon={<SlidersHorizontal size={12} />}
+                            onClick={() => setShowFilters(true)}
+                            size={'small'}
+                        >
+                            Đổi nguồn
+                        </Button>
+                    </Flexbox>
+                </Flexbox>
+            )}
+
             {/* Search Results */}
             {papers.length > 0 && !isSearching && (
                 <Flexbox gap={8}>
-                    <Flexbox align={'center'} horizontal justify={'space-between'}>
+                    <Flexbox align={'center'} horizontal justify={'space-between'} wrap={'wrap'}>
                         <span className={styles.sectionTitle}>
                             📄 Kết quả tìm kiếm ({filteredPapers.length}
                             {filteredPapers.length !== totalResults ? ` / ${totalResults}` : ''} papers)
+                            {translatedQuery && (
+                                <span style={{ color: '#888', fontSize: 11, fontWeight: 400, marginLeft: 8 }}>
+                                    🌐 Tìm bằng: <code>{translatedQuery}</code>
+                                </span>
+                            )}
                         </span>
                         {filteredPapers.length !== totalResults && (
                             <span style={{ fontSize: 11, opacity: 0.6 }}>Đang lọc — {totalResults - filteredPapers.length} ẩn</span>
@@ -469,8 +536,8 @@ const DiscoveryPhase = memo(() => {
                 </Flexbox>
             )}
 
-            {/* Empty state */}
-            {papers.length === 0 && !isSearching && !searchError && (
+            {/* Empty state — only when user has not searched yet (noPapersFound has its own gate above) */}
+            {papers.length === 0 && !isSearching && !searchError && !noPapersFound && (
                 <>
                     <div className={styles.emptyState}>
                         <span style={{ fontSize: 48 }}>🔬</span>
