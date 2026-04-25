@@ -33,7 +33,7 @@ import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
 
-import { buildSearchQuery } from './buildSearchQuery';
+import { buildSearchQuery } from '@/utils/research/buildSearchQuery';
 
 const { TextArea } = Input;
 
