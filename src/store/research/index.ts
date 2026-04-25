@@ -7,6 +7,9 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 
+import { buildSearchQuery, type DetectedLanguage } from '@/utils/research/buildSearchQuery';
+import { extractPICO as llmExtractPICO } from '@/utils/research/extractPICO';
+
 // ========== Types ==========
 
 export interface PaperResult {
@@ -32,6 +35,28 @@ export interface PICOQuery {
     outcome: string;
     population: string;
 }
+
+// ========== AI helper (translate + PICO) ==========
+//
+// Hardcoded to a small/cheap deterministic model — translate quality must be
+// stable across users (free tier, paid tier, custom keys).
+const TRANSLATE_MODEL = 'gpt-4o-mini';
+
+const callAI = async (model: string, prompt: string): Promise<string> => {
+    const res = await fetch('/api/chat/direct', {
+        body: JSON.stringify({
+            messages: [{ content: prompt, role: 'user' }],
+            model,
+            stream: false,
+            temperature: 0.3,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error(`AI call failed: ${res.status}`);
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content ?? data?.content ?? '';
+};
 
 export type ResearchPhase = 'discovery' | 'screening' | 'analysis' | 'writing' | 'publishing';
 
@@ -64,8 +89,10 @@ interface ResearchState {
     autoScreenByYearRange: (yearFrom: number, yearTo: number) => void;
     // Pagination (MED-33)
     currentPage: number;
+    // Translation context (Phase 1.5)
+    detectedLanguage: DetectedLanguage | null;
     excludeAllPapers: () => void;
-    extractPICO: (query: string) => void;
+    extractPICO: (query: string) => Promise<void>;
 
     getExcludedPapers: () => PaperResult[];
     // Getters
@@ -79,6 +106,8 @@ interface ResearchState {
 
     isSearching: boolean;
     loadMoreResults: () => Promise<void>;
+    // Gate state (Phase 1.5): true when last search returned 0 papers from all sources.
+    noPapersFound: boolean;
     papers: PaperResult[];
     pico: PICOQuery | null;
     removePapers: (ids: string[]) => void;
@@ -101,6 +130,8 @@ interface ResearchState {
     setSearchQuery: (query: string) => void;
     toggleSource: (source: SearchSource) => void;
     totalResults: number;
+    // English search query actually sent to PubMed/OpenAlex/etc when input was VN.
+    translatedQuery: string | null;
 
     updateScreeningCriteria: (criteria: Partial<ScreeningCriteria>) => void;
 }
@@ -117,17 +148,22 @@ const defaultCriteria: ScreeningCriteria = {
 const initialState = {
     activePhase: 'discovery' as ResearchPhase,
     currentPage: 1,
+    detectedLanguage: null as DetectedLanguage | null,
     hasMore: true,
     isLoadingMore: false,
     isSearching: false,
+    noPapersFound: false,
     papers: [] as PaperResult[],
     pico: null as PICOQuery | null,
     screeningCriteria: defaultCriteria,
     screeningDecisions: {} as Record<string, ScreeningEntry>,
     searchError: null as string | null,
     searchQuery: '',
-    selectedSources: ['PubMed', 'OpenAlex', 'ArXiv', 'ClinicalTrials.gov'] as SearchSource[],
+    // ArXiv default OFF — heavy CS bias polluted clinical results for our primary
+    // user (BS Đỗ Tiến Sơn, endocrinology). Users can re-enable per search.
+    selectedSources: ['PubMed', 'OpenAlex', 'ClinicalTrials.gov'] as SearchSource[],
     totalResults: 0,
+    translatedQuery: null as string | null,
 };
 
 // ========== API Services ==========
@@ -260,49 +296,6 @@ const searchClinicalTrials = async (query: string, maxResults = 10, offset = 0):
     }
 };
 
-// ========== PICO extraction (keyword-based) ==========
-
-const extractPICOFromQuery = (query: string): PICOQuery => {
-    const lower = query.toLowerCase();
-    const words = query.split(/\s+/);
-
-    let population = '';
-    let intervention = '';
-    let comparison = '';
-    let outcome = '';
-
-    const interventionKeywords = ['metformin', 'aspirin', 'statin', 'insulin', 'therapy', 'treatment', 'drug', 'vaccine', 'surgery'];
-    const outcomeKeywords = ['prevention', 'mortality', 'survival', 'risk', 'efficacy', 'outcome', 'effect', 'incidence', 'reduction'];
-    const comparisonKeywords = ['placebo', 'control', 'versus', 'vs', 'compared', 'alternative'];
-
-    for (const word of words) {
-        const w = word.toLowerCase().replaceAll(/[,.:;]/g, '');
-        if (interventionKeywords.some((k) => w.includes(k))) {
-            intervention = intervention ? `${intervention}, ${word}` : word;
-        }
-        if (outcomeKeywords.some((k) => w.includes(k))) {
-            outcome = outcome ? `${outcome}, ${word}` : word;
-        }
-        if (comparisonKeywords.some((k) => w.includes(k))) {
-            comparison = comparison ? `${comparison}, ${word}` : word;
-        }
-    }
-
-    population = query
-        .replaceAll(new RegExp(intervention.replaceAll(/[$()*+.?[\\\]^{|}]/g, '\\$&'), 'gi'), '')
-        .replaceAll(new RegExp(outcome.replaceAll(/[$()*+.?[\\\]^{|}]/g, '\\$&'), 'gi'), '')
-        .replaceAll(new RegExp(comparison.replaceAll(/[$()*+.?[\\\]^{|}]/g, '\\$&'), 'gi'), '')
-        .replaceAll(/\s+/g, ' ')
-        .trim() || query;
-
-    return {
-        comparison: comparison || 'Placebo / Standard care',
-        intervention: intervention || lower,
-        outcome: outcome || 'Clinical outcomes',
-        population: population || 'Study population',
-    };
-};
-
 // ========== Store ==========
 
 export const useResearchStore = create<ResearchState>()(
@@ -373,9 +366,13 @@ export const useResearchStore = create<ResearchState>()(
                     set({ screeningDecisions: decisions }, false, 'excludeAllPapers');
                 },
 
-                extractPICO: (query) => {
-                    const pico = extractPICOFromQuery(query);
-                    set({ pico }, false, 'extractPICO');
+                extractPICO: async (query) => {
+                    const { translatedQuery } = get();
+                    // Prefer the English translated query when available — keyword
+                    // matching against MeSH-style terminology is far more reliable.
+                    const queryForExtraction = translatedQuery || query;
+                    const result = await llmExtractPICO(queryForExtraction, callAI, TRANSLATE_MODEL);
+                    set({ pico: result.pico }, false, 'extractPICO');
                 },
 
                 getExcludedPapers: () => {
@@ -415,19 +412,23 @@ export const useResearchStore = create<ResearchState>()(
                 },
 
                 loadMoreResults: async () => {
-                    const { currentPage, isLoadingMore, searchQuery, selectedSources, papers } = get();
+                    const { currentPage, isLoadingMore, searchQuery, selectedSources, papers, translatedQuery } = get();
                     if (isLoadingMore || !searchQuery) return;
 
+                    // Reuse the same English query as the initial search so
+                    // pagination doesn't suddenly switch to raw VN and return
+                    // unrelated results.
+                    const queryToUse = translatedQuery || searchQuery;
                     const nextPage = currentPage + 1;
                     const offset = currentPage * 10;
                     set({ isLoadingMore: true }, false, 'loadMoreResults/start');
 
                     try {
                         const promises: Promise<PaperResult[]>[] = [];
-                        if (selectedSources.includes('PubMed')) promises.push(searchPubMed(searchQuery, 10, offset));
-                        if (selectedSources.includes('OpenAlex')) promises.push(searchOpenAlex(searchQuery, 10, offset));
-                        if (selectedSources.includes('ArXiv')) promises.push(searchArXiv(searchQuery, 10, offset));
-                        if (selectedSources.includes('ClinicalTrials.gov')) promises.push(searchClinicalTrials(searchQuery, 10, offset));
+                        if (selectedSources.includes('PubMed')) promises.push(searchPubMed(queryToUse, 10, offset));
+                        if (selectedSources.includes('OpenAlex')) promises.push(searchOpenAlex(queryToUse, 10, offset));
+                        if (selectedSources.includes('ArXiv')) promises.push(searchArXiv(queryToUse, 10, offset));
+                        if (selectedSources.includes('ClinicalTrials.gov')) promises.push(searchClinicalTrials(queryToUse, 10, offset));
 
                         const results = await Promise.allSettled(promises);
                         const newPapers: PaperResult[] = [];
@@ -496,28 +497,65 @@ export const useResearchStore = create<ResearchState>()(
 
                 searchPapers: async (query) => {
                     const { selectedSources } = get();
-                    set({ currentPage: 1, hasMore: true, isSearching: true, searchError: null, searchQuery: query }, false, 'searchPapers/start');
+                    set({
+                        currentPage: 1,
+                        detectedLanguage: null,
+                        hasMore: true,
+                        isSearching: true,
+                        noPapersFound: false,
+                        searchError: null,
+                        searchQuery: query,
+                        translatedQuery: null,
+                    }, false, 'searchPapers/start');
 
                     try {
-                        const promises: Promise<PaperResult[]>[] = [];
-                        if (selectedSources.includes('PubMed')) promises.push(searchPubMed(query));
-                        if (selectedSources.includes('OpenAlex')) promises.push(searchOpenAlex(query));
-                        if (selectedSources.includes('ArXiv')) promises.push(searchArXiv(query));
-                        if (selectedSources.includes('ClinicalTrials.gov')) promises.push(searchClinicalTrials(query));
+                        // Step 1 — translate VN → EN (Bug A). EN/other passes through unchanged.
+                        const queryInfo = await buildSearchQuery(query, callAI, TRANSLATE_MODEL);
+                        const finalQuery = queryInfo.searchQuery;
 
-                        const results = await Promise.allSettled(promises);
+                        set({
+                            detectedLanguage: queryInfo.detectedLanguage,
+                            translatedQuery: queryInfo.translated ? queryInfo.searchQuery : null,
+                        }, false, 'searchPapers/translated');
+
+                        (window as any).posthog?.capture('research_query_translated', {
+                            detected_language: queryInfo.detectedLanguage,
+                            duration_ms: queryInfo.durationMs,
+                            fell_back_to_original: queryInfo.fellBackToOriginal,
+                            original_query: queryInfo.originalQuery.slice(0, 200),
+                            surface: 'research_mode',
+                            translated: queryInfo.translated,
+                            translated_query: queryInfo.searchQuery.slice(0, 200),
+                        });
+
+                        // Step 2 — fan out to selected sources using the (possibly translated) query.
+                        const sourceOrder: SearchSource[] = ['PubMed', 'OpenAlex', 'ArXiv', 'ClinicalTrials.gov'];
+                        const fetchers: Record<SearchSource, (_q: string) => Promise<PaperResult[]>> = {
+                            ArXiv: (q) => searchArXiv(q),
+                            'ClinicalTrials.gov': (q) => searchClinicalTrials(q),
+                            OpenAlex: (q) => searchOpenAlex(q),
+                            PubMed: (q) => searchPubMed(q),
+                        };
+                        const usedSources = sourceOrder.filter((s) => selectedSources.includes(s));
+                        const results = await Promise.allSettled(usedSources.map((s) => fetchers[s](finalQuery)));
+
                         const allPapers: PaperResult[] = [];
-                        const seenDois = new Set<string>();
+                        const seenKeys = new Set<string>();
+                        const sourceTracker: Record<string, number> = {};
 
-                        for (const result of results) {
-                            if (result.status === 'fulfilled') {
+                        for (const [idx, source] of usedSources.entries()) {
+                            const result = results[idx];
+                            if (result?.status === 'fulfilled') {
+                                sourceTracker[source] = result.value.length;
                                 for (const paper of result.value) {
                                     const key = paper.doi || paper.title;
-                                    if (!seenDois.has(key)) {
-                                        seenDois.add(key);
+                                    if (!seenKeys.has(key)) {
+                                        seenKeys.add(key);
                                         allPapers.push(paper);
                                     }
                                 }
+                            } else {
+                                sourceTracker[source] = 0;
                             }
                         }
 
@@ -526,17 +564,47 @@ export const useResearchStore = create<ResearchState>()(
                             return b.year - a.year;
                         });
 
-                        // If any source returned 10 results (max per page), there may be more
                         const hasMore = allPapers.length >= 10;
+
+                        (window as any).posthog?.capture('research_papers_found', {
+                            detected_language: queryInfo.detectedLanguage,
+                            original_question: queryInfo.originalQuery.slice(0, 200),
+                            paper_count: allPapers.length,
+                            papers_per_source: sourceTracker,
+                            sources: Array.from(selectedSources),
+                            surface: 'research_mode',
+                            translated_query: queryInfo.searchQuery.slice(0, 200),
+                        });
+
+                        if (allPapers.length === 0) {
+                            set({
+                                hasMore: false,
+                                isSearching: false,
+                                noPapersFound: true,
+                                papers: [],
+                                screeningDecisions: {},
+                                totalResults: 0,
+                            }, false, 'searchPapers/noPapers');
+
+                            (window as any).posthog?.capture('research_no_papers', {
+                                original_question: queryInfo.originalQuery.slice(0, 200),
+                                sources: Array.from(selectedSources),
+                                surface: 'research_mode',
+                                translated_query: queryInfo.searchQuery.slice(0, 200),
+                            });
+                            return;
+                        }
 
                         set({
                             hasMore,
                             isSearching: false,
+                            noPapersFound: false,
                             papers: allPapers,
                             screeningDecisions: {},
                             totalResults: allPapers.length,
                         }, false, 'searchPapers/done');
-                    } catch {
+                    } catch (e) {
+                        console.error('[searchPapers] error', e);
                         set({ isSearching: false, searchError: 'Search failed. Please try again.' }, false, 'searchPapers/error');
                     }
                 },

@@ -40,7 +40,10 @@ const aiWriteSection = async (
         '',
         picoText,
         existingContent ? `\nExisting draft (improve this):\n${existingContent}` : '',
-        context.refs ? `\nKey references:\n${context.refs}` : '',
+        context.refs
+            ? `\n=== KEY REFERENCES (cite ONLY these — use [Author, Year] format) ===\n${context.refs}\n=== END REFERENCES ===`
+            : `\n=== NO REFERENCES AVAILABLE ===\nDo NOT cite any specific studies, authors, or PMIDs. Use generic phrasing only.`,
+        '\nIMPORTANT: When citing, use ONLY papers from the references above. Format: [Author, Year]. Do NOT invent citations.',
         '\nRespond in English. Academic register. Use markdown formatting.',
     ].join('\n');
 
@@ -230,9 +233,13 @@ const WritingPhase = memo(() => {
     const handleAIWrite = useCallback(async (sectionKey: string, sectionLabel: string, existingContent: string) => {
         setAiGenerating((prev) => ({ ...prev, [sectionKey]: true }));
         setExpandedSection(sectionKey); // open the section
-        const refsText = includedPapers.slice(0, 8).map((p) =>
-            `- ${p.authors} (${p.year}). ${p.title}`,
-        ).join('\n');
+        const refsText = includedPapers.slice(0, 8).map((p, i) => {
+            const abstract = (p.abstract || '').slice(0, 250);
+            const id = p.id?.startsWith('pubmed-')
+                ? ` PMID:${p.id.replace('pubmed-', '')}`
+                : (p.doi ? ` DOI:${p.doi}` : '');
+            return `[${i + 1}] ${p.authors} (${p.year}). ${p.title}.${id}${abstract ? `\n    Abstract: ${abstract}${p.abstract && p.abstract.length > 250 ? '...' : ''}` : ''}`;
+        }).join('\n\n');
         try {
             const result = await aiWriteSection(sectionKey, sectionLabel, existingContent, {
                 pico, query: searchQuery, refs: refsText,
