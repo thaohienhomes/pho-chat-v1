@@ -33,6 +33,8 @@ import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
 
+import { buildSearchQuery } from './buildSearchQuery';
+
 const { TextArea } = Input;
 
 /* ────────────────────────── types ────────────────────────── */
@@ -639,7 +641,10 @@ const DeepResearchBody = memo(() => {
   const [gradeData, setGradeData] = useState<GradeRow[]>([]);
   const [showGrade, setShowGrade] = useState(false);
   const [isGeneratingGrade, setIsGeneratingGrade] = useState(false);
-  const [searchSources, setSearchSources] = useState<Set<string>>(new Set(['pubmed']));
+  const [searchSources, setSearchSources] = useState<Set<string>>(
+    new Set(['pubmed', 'semantic_scholar']),
+  );
+  const [noPapersFound, setNoPapersFound] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
   const [networkData, setNetworkData] = useState<Record<string, NetworkRef[]>>({});
   const [expandedNetworkNode, setExpandedNetworkNode] = useState<string | null>(null);
@@ -825,38 +830,186 @@ Return ONLY the JSON array.`;
     [question, model],
   );
 
+  /* ── Run agents + outline (shared by happy-path and continue-without-literature) ── */
+  const runAgentsAndOutline = useCallback(
+    async (papers: PubMedPaper[], hasLiterature: boolean) => {
+      if (abortRef.current) return;
+
+      const litContext = hasLiterature
+        ? `\n\n=== RETRIEVED LITERATURE FROM PUBMED ===\n${papers
+            .slice(0, 6)
+            .map(
+              (p, i) =>
+                `[${i + 1}] ${p.authors} (${p.year}). ${p.title}. ${p.journal}. PMID: ${p.pmid}\nAbstract: ${p.abstract.slice(0, 400)}`,
+            )
+            .join('\n\n')}\n=== END LITERATURE ===`
+        : '';
+
+      const clarifyContext =
+        clarifyQs.length > 0
+          ? `\n\nAdditional scope context from clarifying questions:\n${clarifyQs.map((q, i) => `Q: ${q}\nA: ${clarifyAnswers[i] || 'No specific preference'}`).join('\n')}`
+          : '';
+
+      // When no literature is available, harden the prompt to forbid fabricated citations.
+      const citationGuard = hasLiterature
+        ? `IMPORTANT: When citing studies, use ONLY real papers from the provided PubMed literature above. Use the format [Author, Year] and include the PMID when possible. Do NOT fabricate or hallucinate citations.`
+        : `IMPORTANT: No literature was retrieved for this question. You MUST NOT cite specific studies, authors, journals, PMIDs, or DOIs. Use only general clinical knowledge and clearly label it as such (e.g., "general clinical practice suggests", "standard textbook teaching indicates"). Inventing citations is strictly prohibited.`;
+
+      const agentPrompts = AGENTS.map((agent) => {
+        const perspectiveMap: Record<string, string> = {
+          'Clinical Researcher': `You are a clinical researcher conducting a literature search. Find and summarize key clinical studies (RCTs, systematic reviews, meta-analyses) relevant to this question. For each study found, provide: Author/Year, Study Design, Sample Size, Key Findings, and Limitations. Focus on the highest quality evidence available.`,
+          'Clinician': `You are an experienced clinician evaluating the clinical applicability of research. Assess the practical implications of findings for this question. Consider: treatment protocols, dose-response relationships, patient selection criteria, monitoring requirements, clinical decision-making algorithms, and real-world effectiveness vs efficacy.`,
+          'Methodologist': `You are a research methodologist reviewing the quality of evidence. For this question, assess: study design adequacy, risk of bias (using Cochrane RoB 2.0 or ROBINS-I frameworks), heterogeneity concerns, publication bias indicators, statistical methods used, and overall quality of evidence (using GRADE or similar framework).`,
+          'Patient Advocate': `You are a patient advocate reviewing research from the patient perspective. For this question, evaluate: adverse effects and tolerability, impact on quality of life, treatment burden and adherence challenges, patient-reported outcomes, accessibility and cost considerations, and patient preference data.`,
+        };
+
+        return {
+          name: agent.name,
+          prompt: `${perspectiveMap[agent.name] || ''}
+
+Clinical Question: "${question}"${clarifyContext}${litContext}
+
+${citationGuard}
+
+Provide a thorough analysis from your perspective. Use markdown formatting with headers, bullet points, and bold for key findings. Include specific data points (percentages, confidence intervals, p-values) where relevant.`,
+        };
+      });
+
+      // Run agents in parallel
+      const updatedAgents = [...agents];
+      const promises = agentPrompts.map(async (ap, idx) => {
+        updatedAgents[idx] = { ...updatedAgents[idx], status: 'running' };
+        setAgents([...updatedAgents]);
+        setProgressLines((prev) => [
+          ...prev,
+          `🔄 ${AGENTS[idx].emoji} ${ap.name} đang nghiên cứu...`,
+        ]);
+
+        try {
+          const result = await callAI(model, ap.prompt, ap.name);
+          if (abortRef.current) return;
+          updatedAgents[idx] = { content: result, name: ap.name, status: 'done' };
+          setAgents([...updatedAgents]);
+          setProgressLines((prev) => [...prev, `✅ ${AGENTS[idx].emoji} ${ap.name} hoàn thành`]);
+        } catch (e: any) {
+          updatedAgents[idx] = { content: e.message, name: ap.name, status: 'error' };
+          setAgents([...updatedAgents]);
+          setProgressLines((prev) => [
+            ...prev,
+            `❌ ${AGENTS[idx].emoji} ${ap.name} lỗi: ${e.message}`,
+          ]);
+        }
+      });
+
+      await Promise.all(promises);
+      if (!abortRef.current) {
+        setProgressLines((prev) => [...prev, '📋 Đang tạo dàn bài...']);
+        const findings = updatedAgents
+          .filter((a) => a.status === 'done')
+          .map((a) => `## ${a.name}\n${a.content}`)
+          .join('\n\n---\n\n');
+        startOutline(findings);
+      }
+    },
+    [question, model, clarifyQs, clarifyAnswers, agents, startOutline],
+  );
+
   /* ── Phase 2 → Research ── */
-  const startResearch = useCallback(async () => {
-    setPhase('research');
-    abortRef.current = false;
-    setStartTime(Date.now());
-    setPubmedPapers([]);
-    setCitationResults([]);
+  const startResearch = useCallback(
+    async (options?: { forceContinueWithoutLiterature?: boolean }) => {
+      const force = options?.forceContinueWithoutLiterature ?? false;
+      setPhase('research');
+      abortRef.current = false;
+      setNoPapersFound(false);
+      setStartTime(Date.now());
 
-    // ── Literature Search (multi-source) ──
-    let allPapers: PubMedPaper[] = [];
-    if (searchSources.has('pubmed')) {
-      setProgressLines((prev) => [...prev, '🔍 Đang tìm y văn trên PubMed...']);
-      const pubmedPapers = await searchPubMed(question, 10);
-      allPapers = [...allPapers, ...pubmedPapers.map((p) => ({ ...p, source: 'pubmed' as const }))];
-    }
-    if (searchSources.has('semantic_scholar')) {
-      setProgressLines((prev) => [...prev, '🔍 Đang tìm y văn trên Semantic Scholar...']);
-      const s2Papers = await searchSemanticScholar(question, 10);
-      allPapers = [...allPapers, ...s2Papers];
-    }
-    const papers = deduplicatePapers(allPapers);
-    setPubmedPapers(papers);
+      if (force) {
+        // User chose to proceed despite zero papers — agents run with hardened prompt.
+        setProgressLines((prev) => [
+          ...prev,
+          '⚠️ Tiếp tục không có y văn — agents sẽ trả lời từ kiến thức chung, không có trích dẫn.',
+        ]);
+        (window as any).posthog?.capture('research_no_papers_continued', {
+          question: question.slice(0, 200),
+        });
+        await runAgentsAndOutline([], false);
+        return;
+      }
 
-    (window as any).posthog?.capture('research_papers_found', {
-      paper_count: papers.length,
-      question: question.slice(0, 200),
-      sources: Array.from(searchSources),
-    });
+      setPubmedPapers([]);
+      setCitationResults([]);
 
-    if (papers.length > 0) {
-      const pubmedCount = papers.filter((p) => p.source === 'pubmed').length;
-      const s2Count = papers.filter((p) => p.source === 'semantic_scholar').length;
+      // ── 1. Build search query (translate VI → EN if needed) ──
+      setProgressLines((prev) => [...prev, '🌐 Đang chuẩn bị truy vấn tìm kiếm...']);
+      const queryInfo = await buildSearchQuery(question, callAI, model);
+      if (queryInfo.translated) {
+        setProgressLines((prev) => [
+          ...prev,
+          `🌐 Dịch sang tiếng Anh: "${queryInfo.searchQuery}"`,
+        ]);
+      } else if (queryInfo.fellBackToOriginal) {
+        setProgressLines((prev) => [
+          ...prev,
+          '⚠️ Dịch truy vấn thất bại, dùng câu hỏi gốc.',
+        ]);
+      }
+      (window as any).posthog?.capture('research_query_translated', {
+        detected_language: queryInfo.detectedLanguage,
+        duration_ms: queryInfo.durationMs,
+        fell_back_to_original: queryInfo.fellBackToOriginal,
+        original_query: queryInfo.originalQuery.slice(0, 200),
+        translated: queryInfo.translated,
+        translated_query: queryInfo.searchQuery.slice(0, 200),
+      });
+
+      // ── 2. Literature search (multi-source) ──
+      let pubmedCount = 0;
+      let s2Count = 0;
+      let allPapers: PubMedPaper[] = [];
+      if (searchSources.has('pubmed')) {
+        setProgressLines((prev) => [...prev, '🔍 Đang tìm y văn trên PubMed...']);
+        const pubmedPapers = await searchPubMed(queryInfo.searchQuery, 10);
+        pubmedCount = pubmedPapers.length;
+        allPapers = [
+          ...allPapers,
+          ...pubmedPapers.map((p) => ({ ...p, source: 'pubmed' as const })),
+        ];
+      }
+      if (searchSources.has('semantic_scholar')) {
+        setProgressLines((prev) => [...prev, '🔍 Đang tìm y văn trên Semantic Scholar...']);
+        const s2Papers = await searchSemanticScholar(queryInfo.searchQuery, 10);
+        s2Count = s2Papers.length;
+        allPapers = [...allPapers, ...s2Papers];
+      }
+      const papers = deduplicatePapers(allPapers);
+      setPubmedPapers(papers);
+
+      (window as any).posthog?.capture('research_papers_found', {
+        detected_language: queryInfo.detectedLanguage,
+        original_question: queryInfo.originalQuery.slice(0, 200),
+        paper_count: papers.length,
+        papers_per_source: { pubmed: pubmedCount, semantic_scholar: s2Count },
+        question: question.slice(0, 200),
+        sources: Array.from(searchSources),
+        translated_query: queryInfo.searchQuery.slice(0, 200),
+      });
+
+      if (papers.length === 0) {
+        // Gate: stop and ask the user before generating a citation-less article.
+        setNoPapersFound(true);
+        setProgressLines((prev) => [
+          ...prev,
+          '⚠️ Không tìm thấy bài báo phù hợp. Vui lòng tinh chỉnh câu hỏi hoặc tiếp tục không có y văn.',
+        ]);
+        (window as any).posthog?.capture('research_no_papers', {
+          original_question: queryInfo.originalQuery.slice(0, 200),
+          sources: Array.from(searchSources),
+          translated_query: queryInfo.searchQuery.slice(0, 200),
+        });
+        setStartTime(null);
+        return;
+      }
+
       const sourceSummary = [
         pubmedCount > 0 ? `PubMed: ${pubmedCount}` : '',
         s2Count > 0 ? `S2: ${s2Count}` : '',
@@ -867,87 +1020,12 @@ Return ONLY the JSON array.`;
         ...prev,
         `📚 Tìm thấy ${papers.length} bài báo (${sourceSummary})`,
       ]);
-    } else {
-      setProgressLines((prev) => [
-        ...prev,
-        '⚠️ Không tìm thấy bài báo, agents sẽ nghiên cứu từ kiến thức chung',
-      ]);
-    }
-    if (abortRef.current) return;
 
-    // Build literature context from PubMed papers (limit size to avoid timeout)
-    const litContext =
-      papers.length > 0
-        ? `\n\n=== RETRIEVED LITERATURE FROM PUBMED ===\n${papers
-            .slice(0, 6)
-            .map(
-              (p, i) =>
-                `[${i + 1}] ${p.authors} (${p.year}). ${p.title}. ${p.journal}. PMID: ${p.pmid}\nAbstract: ${p.abstract.slice(0, 400)}`,
-            )
-            .join('\n\n')}\n=== END LITERATURE ===`
-        : '';
-
-    const clarifyContext =
-      clarifyQs.length > 0
-        ? `\n\nAdditional scope context from clarifying questions:\n${clarifyQs.map((q, i) => `Q: ${q}\nA: ${clarifyAnswers[i] || 'No specific preference'}`).join('\n')}`
-        : '';
-
-    const agentPrompts = AGENTS.map((agent) => {
-      const perspectiveMap: Record<string, string> = {
-        'Clinical Researcher': `You are a clinical researcher conducting a literature search. Find and summarize key clinical studies (RCTs, systematic reviews, meta-analyses) relevant to this question. For each study found, provide: Author/Year, Study Design, Sample Size, Key Findings, and Limitations. Focus on the highest quality evidence available.`,
-        'Clinician': `You are an experienced clinician evaluating the clinical applicability of research. Assess the practical implications of findings for this question. Consider: treatment protocols, dose-response relationships, patient selection criteria, monitoring requirements, clinical decision-making algorithms, and real-world effectiveness vs efficacy.`,
-        'Methodologist': `You are a research methodologist reviewing the quality of evidence. For this question, assess: study design adequacy, risk of bias (using Cochrane RoB 2.0 or ROBINS-I frameworks), heterogeneity concerns, publication bias indicators, statistical methods used, and overall quality of evidence (using GRADE or similar framework).`,
-        'Patient Advocate': `You are a patient advocate reviewing research from the patient perspective. For this question, evaluate: adverse effects and tolerability, impact on quality of life, treatment burden and adherence challenges, patient-reported outcomes, accessibility and cost considerations, and patient preference data.`,
-      };
-
-      return {
-        name: agent.name,
-        prompt: `${perspectiveMap[agent.name] || ''}
-
-Clinical Question: "${question}"${clarifyContext}${litContext}
-
-IMPORTANT: When citing studies, use ONLY real papers from the provided PubMed literature above. Use the format [Author, Year] and include the PMID when possible. Do NOT fabricate or hallucinate citations.
-
-Provide a thorough analysis from your perspective. Use markdown formatting with headers, bullet points, and bold for key findings. Include specific data points (percentages, confidence intervals, p-values) where relevant.`,
-      };
-    });
-
-    // Run agents in parallel
-    const updatedAgents = [...agents];
-    const promises = agentPrompts.map(async (ap, idx) => {
-      updatedAgents[idx] = { ...updatedAgents[idx], status: 'running' };
-      setAgents([...updatedAgents]);
-      setProgressLines((prev) => [
-        ...prev,
-        `🔄 ${AGENTS[idx].emoji} ${ap.name} đang nghiên cứu...`,
-      ]);
-
-      try {
-        const result = await callAI(model, ap.prompt, ap.name);
-        if (abortRef.current) return;
-        updatedAgents[idx] = { content: result, name: ap.name, status: 'done' };
-        setAgents([...updatedAgents]);
-        setProgressLines((prev) => [...prev, `✅ ${AGENTS[idx].emoji} ${ap.name} hoàn thành`]);
-      } catch (e: any) {
-        updatedAgents[idx] = { content: e.message, name: ap.name, status: 'error' };
-        setAgents([...updatedAgents]);
-        setProgressLines((prev) => [
-          ...prev,
-          `❌ ${AGENTS[idx].emoji} ${ap.name} lỗi: ${e.message}`,
-        ]);
-      }
-    });
-
-    await Promise.all(promises);
-    if (!abortRef.current) {
-      setProgressLines((prev) => [...prev, '📋 Đang tạo dàn bài...']);
-      const findings = updatedAgents
-        .filter((a) => a.status === 'done')
-        .map((a) => `## ${a.name}\n${a.content}`)
-        .join('\n\n---\n\n');
-      startOutline(findings);
-    }
-  }, [question, model, clarifyQs, clarifyAnswers, agents, startOutline]);
+      if (abortRef.current) return;
+      await runAgentsAndOutline(papers, true);
+    },
+    [question, model, searchSources, runAgentsAndOutline],
+  );
 
   // Keep ref in sync so handleStart can trigger it without forward reference
   startResearchRef.current = startResearch;
@@ -2017,7 +2095,11 @@ ER  - `;
                   />
                 </Flexbox>
               ))}
-              <Button icon={<Search size={14} />} onClick={startResearch} type="primary">
+              <Button
+                icon={<Search size={14} />}
+                onClick={() => startResearch()}
+                type="primary"
+              >
                 Tiếp tục nghiên cứu →
               </Button>
             </>
@@ -2025,8 +2107,71 @@ ER  - `;
         </Flexbox>
       )}
 
+      {/* ────── No papers found gate ────── */}
+      {phase === 'research' && noPapersFound && (
+        <Flexbox
+          gap={8}
+          style={{
+            background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.4)',
+            borderRadius: 8,
+            padding: 12,
+          }}
+        >
+          <Flexbox align={'center'} gap={8} horizontal>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>
+              Không tìm thấy bài báo phù hợp
+            </span>
+          </Flexbox>
+          <span style={{ color: '#888', fontSize: 12 }}>
+            Cả PubMed và Semantic Scholar đều không trả về bài báo cho truy vấn này. Việc viết
+            bài tổng quan không có y văn sẽ không có trích dẫn xác thực và{' '}
+            <strong>không khuyến nghị cho mục đích lâm sàng</strong>.
+          </span>
+          <Flexbox gap={6} horizontal style={{ flexWrap: 'wrap' }}>
+            <Button
+              icon={<Pencil size={12} />}
+              onClick={() => {
+                setPhase('input');
+                setNoPapersFound(false);
+                setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                setProgressLines([]);
+              }}
+              size="small"
+              type="primary"
+            >
+              Tinh chỉnh câu hỏi
+            </Button>
+            <Button
+              icon={<RefreshCw size={12} />}
+              onClick={() => {
+                setNoPapersFound(false);
+                setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                startResearch();
+              }}
+              size="small"
+            >
+              Thử lại
+            </Button>
+            <Button
+              danger
+              icon={<Play size={12} />}
+              onClick={() => {
+                setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                startResearch({ forceContinueWithoutLiterature: true });
+              }}
+              size="small"
+            >
+              Tiếp tục không có y văn
+            </Button>
+          </Flexbox>
+        </Flexbox>
+      )}
+
       {/* ────── PHASE: RESEARCH + AGENTS ────── */}
-      {(phase === 'research' || phase === 'outline' || phase === 'article' || phase === 'done') && (
+      {(phase === 'research' || phase === 'outline' || phase === 'article' || phase === 'done') &&
+        !noPapersFound && (
         <Flexbox gap={8}>
           <Flexbox align={'center'} gap={8} horizontal justify={'space-between'}>
             <Flexbox align={'center'} gap={8} horizontal>
