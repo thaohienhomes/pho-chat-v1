@@ -2353,12 +2353,12 @@ ER  - `;
                     {agent.status === 'running' && <Loader2 className="animate-spin" size={12} />}
                     {agent.status === 'done' && (
                       <Tag color="success" style={{ fontSize: 10 }}>
-                        \u2713
+                        ✓
                       </Tag>
                     )}
                     {agent.status === 'error' && (
                       <Tag color="error" style={{ fontSize: 10 }}>
-                        \u2717
+                        ✗
                       </Tag>
                     )}
                     {agent.status === 'done' && (
