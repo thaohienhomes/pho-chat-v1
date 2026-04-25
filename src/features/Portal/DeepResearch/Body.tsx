@@ -1080,6 +1080,25 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
       })
       .join('\n');
 
+    // Bug C fix — inject the actual retrieved papers into the prompt so the
+    // model has a concrete source-of-truth for [Author, Year] citations.
+    // Without this block the model invents citations to satisfy the
+    // "include inline citations" instruction.
+    const papersContext = pubmedPapers
+      .slice(0, 6)
+      .map((p, i) => {
+        const abstract = (p.abstract || '').slice(0, 300);
+        const pmid = p.pmid ? ` PMID:${p.pmid}` : '';
+        return `[${i + 1}] ${p.authors} (${p.year}). ${p.title}.${pmid}${abstract ? `\n     Abstract: ${abstract}${p.abstract && p.abstract.length > 300 ? '...' : ''}` : ''}`;
+      })
+      .join('\n\n');
+
+    const hasLiterature = pubmedPapers.length > 0;
+    const limitedLitWarning =
+      pubmedPapers.length > 0 && pubmedPapers.length < 3
+        ? `\n\nIMPORTANT: Only ${pubmedPapers.length} paper(s) were retrieved. The literature base is very limited. Acknowledge this in the Discussion section as a limitation. Do NOT extrapolate beyond what these papers support. Do NOT fabricate additional citations to fill gaps.`
+        : '';
+
     const prompt = `You are an expert medical academic writer. Write a comprehensive literature review article based on the following outline and research findings.
 
 Clinical Question: "${question}"
@@ -1087,19 +1106,34 @@ Clinical Question: "${question}"
 Outline:
 ${outlineStr}
 
+${
+  hasLiterature
+    ? `=== RETRIEVED LITERATURE (cite ONLY these papers — use [Author, Year] inline format) ===
+${papersContext}
+=== END LITERATURE ===
+`
+    : `=== NO LITERATURE RETRIEVED ===
+No papers were found for this question. You MUST NOT cite any specific studies, authors, journals, PMIDs, or DOIs. Use only general clinical knowledge and label it as such ("general clinical practice suggests", "standard textbook teaching"). Inventing citations is strictly prohibited.
+`
+}
 Research Findings from Multiple Perspectives:
 ${agentFindings.slice(0, 15_000)}
 
 Instructions:
 1. Follow the outline structure exactly, using markdown headers (##, ###)
 2. Synthesize findings from all perspectives, don't just copy them
-3. Include inline citations in [Author, Year] format
+3. ${
+      hasLiterature
+        ? 'Include inline citations in [Author, Year] format using ONLY the papers listed in RETRIEVED LITERATURE above. Each citation must match a real paper — do NOT invent author names or years. Include PMID when available.'
+        : 'Do NOT include any author/year/PMID/DOI citations. Use generic phrasing ("evidence suggests", "clinical guidelines indicate").'
+    }
 4. Add a "Summary of Findings" table at the end
 5. Include GRADE quality assessment for major outcomes
 6. Use professional academic medical writing style
 7. Total length: 2000-4000 words
 8. End with "Key Takeaways" bullet points
 9. Write the entire article in ${outputLang === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'}
+${limitedLitWarning}
 
 Write the full article now in markdown format.`;
 
@@ -1133,6 +1167,46 @@ Write the full article now in markdown format.`;
         setArticle(finalArticle);
         setPhase('done'); // Only switch to done AFTER successful generation
         setProgressLines((prev) => [...prev, `✅ Bài tổng quan hoàn thành! (${wordCount} từ)`]);
+
+        // Bug C — sanity-check citations against the actual retrieved papers.
+        // Cheap heuristic: compare first-name/lastname tokens. False positives
+        // are fine; we only escalate when most citations look fabricated.
+        if (hasLiterature) {
+          const citationRegex = /\[([^\]]+),\s*(\d{4})]/g;
+          const matches = [...result.matchAll(citationRegex)];
+          const validAuthors = new Set(
+            pubmedPapers
+              .flatMap((p) =>
+                p.authors
+                  .split(/[,;]/)
+                  .map((a) => a.trim().toLowerCase().split(/\s+/)[0])
+              )
+              .filter(Boolean),
+          );
+
+          let invalidCount = 0;
+          for (const m of matches) {
+            const citedAuthor = m[1].trim().toLowerCase().split(/[\s,]+/)[0];
+            if (citedAuthor && !validAuthors.has(citedAuthor)) {
+              invalidCount++;
+            }
+          }
+
+          (window as any).posthog?.capture('article_citation_validation', {
+            invalid_count: invalidCount,
+            paper_count: pubmedPapers.length,
+            surface: 'deep_research',
+            total_citations: matches.length,
+            validation_passed: invalidCount === 0,
+          });
+
+          if (matches.length > 0 && invalidCount / matches.length > 0.5) {
+            setProgressLines((prev) => [
+              ...prev,
+              `⚠️ Phát hiện ${invalidCount}/${matches.length} citation có thể không khớp papers — vui lòng kiểm tra lại.`,
+            ]);
+          }
+        }
 
         (window as any).posthog?.capture('article_generation_complete', {
           generation_time_seconds: Math.round((Date.now() - articleStartTime) / 1000),
