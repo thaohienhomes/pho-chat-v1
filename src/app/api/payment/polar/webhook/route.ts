@@ -1,3 +1,4 @@
+import { WebhookVerificationError, validateEvent } from '@polar-sh/sdk/webhooks';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
@@ -120,22 +121,47 @@ export async function POST(req: Request) {
   try {
     const { serverAnalytics } = await import('@/libs/analytics');
     const body = await req.text();
-    const event = JSON.parse(body);
+
+    // ── HMAC Signature Verification ────────────────────────────────
+    // Polar webhooks use standardwebhooks (svix-compatible) signature format.
+    // SDK's validateEvent both verifies signature AND parses into typed event.
+    // If signature invalid → WebhookVerificationError → reject 403.
+    // If signature valid but event schema unknown to SDK (e.g. older types
+    // like "checkout.completed") → SDKValidationError → fall back to raw parse.
+    const webhookSecret = process.env.POLAR_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('[Polar Webhook] POLAR_WEBHOOK_SECRET not configured');
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+    }
+
+    let event: any;
+    try {
+      event = validateEvent(body, Object.fromEntries(req.headers.entries()), webhookSecret);
+    } catch (verifyErr: any) {
+      if (verifyErr instanceof WebhookVerificationError) {
+        console.error('[Polar Webhook] Invalid signature:', verifyErr.message);
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+      }
+      // SDKValidationError: signature valid, event type not in SDK schema.
+      // Preserve compatibility with event types the handler knows but SDK doesn't.
+      if (
+        verifyErr?.constructor?.name === 'SDKValidationError' ||
+        verifyErr?.name === 'SDKValidationError'
+      ) {
+        console.warn(
+          '[Polar Webhook] Signature valid but event type not in SDK schema, using raw parse:',
+          verifyErr?.message,
+        );
+        event = JSON.parse(body);
+      } else {
+        throw verifyErr;
+      }
+    }
 
     console.log('📥 Polar Webhook Event:', {
       email: event.data?.customer_email || event.data?.customer?.email,
       productId: event.data?.product_id,
       type: event.type,
-    });
-
-    // Temporary debug logging — remove after confirming env var mapping
-    const _debugProductId = event.data?.product_id;
-    console.log('[Polar Webhook Debug]', {
-      envPremiumMonthly: process.env.POLAR_PRODUCT_PREMIUM_MONTHLY_ID,
-      envStarterMonthly: process.env.POLAR_PRODUCT_STARTER_MONTHLY_ID,
-      incomingProductId: _debugProductId,
-      mapHasProduct: !!POLAR_PRODUCT_MAP[_debugProductId],
-      mapKeys: Object.keys(POLAR_PRODUCT_MAP),
     });
 
     // Handle successful payment

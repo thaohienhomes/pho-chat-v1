@@ -672,24 +672,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Verify webhook signature (skip for bank transfers only)
     // Bank transfers use webhook secret token authentication instead of signature verification
     if (webhookData.paymentMethod === 'bank_transfer') {
-      console.log(
-        'ℹ️ Bank transfer webhook - skipping signature verification (authenticated via webhook secret)',
-      );
+      // Bank transfer authenticated via webhook secret header (checked earlier)
+      // Skip signature verification for bank_transfer
     } else if (webhookData.signature) {
       const isValidSignature = sepayGateway.verifyWebhookSignature(webhookData);
 
       if (!isValidSignature) {
-        console.error('❌ Invalid webhook signature:', webhookData.orderId);
-        console.error(
-          '❌ Signature verification failed - webhook will still be processed for debugging',
-        );
-        // Note: We're logging the error but still processing to help with debugging
-        // In production, you may want to reject invalid signatures
-      } else {
-        console.log('✅ Webhook signature verified successfully');
+        console.error('[SePay Webhook] Invalid signature, rejecting:', webhookData.orderId);
+        return NextResponse.json({ error: 'Invalid signature', success: false }, { status: 403 });
       }
     } else {
-      console.warn('⚠️ No signature provided in webhook - skipping signature verification');
+      // No signature provided and not bank_transfer → reject
+      console.error(
+        '[SePay Webhook] Missing signature for non-bank_transfer payment:',
+        webhookData.orderId,
+      );
+      return NextResponse.json({ error: 'Signature required', success: false }, { status: 403 });
     }
 
     // Log to admin webhook viewer
@@ -707,24 +705,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'success': {
         console.log(' Processing successful payment for orderId:', webhookData.orderId);
         await handleSuccessfulPayment(webhookData);
-        void logWebhookEvent({ eventType: `payment.${webhookData.status}`, orderId: webhookData.orderId, provider: 'sepay', status: 'success' });
+        void logWebhookEvent({
+          eventType: `payment.${webhookData.status}`,
+          orderId: webhookData.orderId,
+          provider: 'sepay',
+          status: 'success',
+        });
         break;
       }
       case 'failed': {
         console.log('❌ Processing failed payment for orderId:', webhookData.orderId);
         await handleFailedPayment(webhookData);
-        void logWebhookEvent({ eventType: 'payment.failed', orderId: webhookData.orderId, provider: 'sepay', status: 'error' });
+        void logWebhookEvent({
+          eventType: 'payment.failed',
+          orderId: webhookData.orderId,
+          provider: 'sepay',
+          status: 'error',
+        });
         break;
       }
       case 'pending': {
         console.log('⏳ Processing pending payment for orderId:', webhookData.orderId);
         await handlePendingPayment(webhookData);
-        void logWebhookEvent({ eventType: 'payment.pending', orderId: webhookData.orderId, provider: 'sepay', status: 'received' });
+        void logWebhookEvent({
+          eventType: 'payment.pending',
+          orderId: webhookData.orderId,
+          provider: 'sepay',
+          status: 'received',
+        });
         break;
       }
       default: {
         console.warn('⚠️ Unknown payment status:', webhookData.status);
-        void logWebhookEvent({ eventType: `payment.${webhookData.status}`, orderId: webhookData.orderId, provider: 'sepay', status: 'ignored' });
+        void logWebhookEvent({
+          eventType: `payment.${webhookData.status}`,
+          orderId: webhookData.orderId,
+          provider: 'sepay',
+          status: 'ignored',
+        });
       }
     }
 
