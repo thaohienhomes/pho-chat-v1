@@ -662,6 +662,12 @@ const DeepResearchBody = memo(() => {
   const abortRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const startResearchRef = useRef<(() => void) | undefined>(undefined);
+  // Bug H fix — guard against the auto-trigger useEffect firing
+  // startResearch multiple times (StrictMode double-invoke, parent
+  // re-render reconciliation, race between phase change and agent state).
+  // Reset to false when phase changes AWAY from 'research' so re-entry
+  // (Reset → new question) still works.
+  const hasAutoStartedRef = useRef(false);
 
   // Consume pendingResearchQuery from portal store (auto-fill from chat suggestion)
   const pendingQuery = useChatStore((s) => s.pendingResearchQuery);
@@ -1031,8 +1037,17 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
 
   // Auto-trigger research when phase transitions to 'research' but agents haven't started
   useEffect(() => {
-    if (phase === 'research' && agents.every((a) => a.status === 'idle')) {
+    if (
+      phase === 'research' &&
+      agents.every((a) => a.status === 'idle') &&
+      !hasAutoStartedRef.current
+    ) {
+      hasAutoStartedRef.current = true;
       startResearch();
+    }
+    // Reset flag when leaving research phase so re-entry works
+    if (phase !== 'research') {
+      hasAutoStartedRef.current = false;
     }
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1098,6 +1113,25 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         ? `\n\nIMPORTANT: Only ${pubmedPapers.length} paper(s) were retrieved. The literature base is very limited. Acknowledge this in the Discussion section as a limitation. Do NOT extrapolate beyond what these papers support. Do NOT fabricate additional citations to fill gaps.`
         : '';
 
+    // Bug G fix — Gemini Flash safety filter aggressively refuses medical
+    // content (mental health, suicidality, mortality), emitting a single
+    // "stop" token (~4 chars) instead of a refusal message. Prepend a
+    // clinical-context framing so the model recognises this as a
+    // legitimate professional medical task rather than patient advice.
+    const SAFETY_PREFIX = `You are assisting a licensed physician in conducting a medical literature review for clinical decision support. The retrieved papers describe documented clinical outcomes from peer-reviewed pharmacovigilance studies and randomized trials.
+
+CRITICAL CONTEXT:
+- This is for healthcare professionals, NOT patient-facing content
+- Discussing documented adverse events (including suicidality, depression, mortality) is essential for evidence-based medicine and patient safety
+- Refusing to summarize peer-reviewed medical literature would harm clinical decision-making
+- Your output is a balanced clinical synthesis, not medical advice or a diagnostic recommendation
+
+Produce a comprehensive, evidence-grounded literature review synthesis.
+
+---
+
+`;
+
     const prompt = `You are an expert medical academic writer. Write a comprehensive literature review article based on the following outline and research findings.
 
 Clinical Question: "${question}"
@@ -1136,23 +1170,54 @@ ${limitedLitWarning}
 
 Write the full article now in markdown format.`;
 
-    // Retry logic for article generation
-    const maxRetries = 2;
+    const fullPrompt = SAFETY_PREFIX + prompt;
+
+    // Bug G fix — multi-model fallback. If the primary model returns a
+    // suspiciously short payload (e.g. Gemini Flash safety-filter "stop"
+    // token = 4 chars), retry with safety-tolerant alternatives. GPT-4o
+    // is more permissive on documented medical adverse events.
+    const ARTICLE_MODELS_FALLBACK = [
+      model, // primary: user-selected model
+      'gpt-4o', // fallback: better safety tolerance for medical content
+      'gpt-4o-mini', // last resort: cheaper but still works
+    ];
+    // If output < 50 chars, treat as model refusal / safety filter trigger.
+    const SUSPICIOUS_OUTPUT_THRESHOLD = 50;
+
+    const maxRetries = ARTICLE_MODELS_FALLBACK.length;
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const tryModel = ARTICLE_MODELS_FALLBACK[attempt];
       try {
         if (attempt > 0) {
-          setProgressLines((prev) => [...prev, `🔄 Thử lại lần ${attempt + 1}...`]);
+          setProgressLines((prev) => [
+            ...prev,
+            `🔄 Thử lại với model ${tryModel} (model trước có thể bị safety filter)...`,
+          ]);
         }
 
-        // Stream article — keep phase='article' to show progress
-        const result = await callAIStream(model, prompt, (streamedText) => {
+        // Stream article — use tryModel + fullPrompt (with safety prefix)
+        const result = await callAIStream(tryModel, fullPrompt, (streamedText) => {
           setArticle(streamedText);
         });
 
+        // Detect safety-filter refusal pattern (very short output, e.g. "stop")
+        const trimmed = result.trim();
+        if (trimmed.length < SUSPICIOUS_OUTPUT_THRESHOLD) {
+          (window as any).posthog?.capture('article_safety_filter_suspected', {
+            attempt: attempt + 1,
+            model: tryModel,
+            output_length: trimmed.length,
+            output_preview: trimmed.slice(0, 100),
+          });
+          throw new Error(
+            `Model ${tryModel} trả về quá ngắn (${trimmed.length} ký tự, có thể bị safety filter). Đang thử model khác...`,
+          );
+        }
+
         // Validate output — article must have meaningful content
-        const wordCount = result.trim().split(/\s+/).length;
+        const wordCount = trimmed.split(/\s+/).length;
         const MIN_ARTICLE_WORDS = 200;
         if (wordCount < MIN_ARTICLE_WORDS) {
           throw new Error(
@@ -1314,7 +1379,10 @@ Generate 3-6 rows for the most important outcomes.`;
         return; // Success — exit retry loop
       } catch (e: any) {
         lastError = e;
-        console.error(`[DeepResearch] Article attempt ${attempt + 1} failed:`, e.message);
+        console.error(
+          `[DeepResearch] Article attempt ${attempt + 1} (model=${tryModel}) failed:`,
+          e.message,
+        );
       }
     }
 
@@ -1322,7 +1390,8 @@ Generate 3-6 rows for the most important outcomes.`;
     (window as any).posthog?.capture('article_generation_failed', {
       error: lastError?.message || 'Unknown error',
       generation_time_seconds: Math.round((Date.now() - articleStartTime) / 1000),
-      model,
+      models_tried: ARTICLE_MODELS_FALLBACK,
+      primary_model: model,
     });
 
     setProgressLines((prev) => [
@@ -2169,7 +2238,14 @@ ER  - `;
                   />
                 </Flexbox>
               ))}
-              <Button icon={<Search size={14} />} onClick={() => startResearch()} type="primary">
+              <Button
+                icon={<Search size={14} />}
+                onClick={() => {
+                  hasAutoStartedRef.current = true;
+                  startResearch();
+                }}
+                type="primary"
+              >
                 Tiếp tục nghiên cứu →
               </Button>
             </>
@@ -2216,6 +2292,7 @@ ER  - `;
               onClick={() => {
                 setNoPapersFound(false);
                 setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                hasAutoStartedRef.current = true;
                 startResearch();
               }}
               size="small"
@@ -2227,6 +2304,7 @@ ER  - `;
               icon={<Play size={12} />}
               onClick={() => {
                 setAgents(AGENTS.map((a) => ({ content: '', name: a.name, status: 'idle' })));
+                hasAutoStartedRef.current = true;
                 startResearch({ forceContinueWithoutLiterature: true });
               }}
               size="small"
@@ -2275,12 +2353,12 @@ ER  - `;
                     {agent.status === 'running' && <Loader2 className="animate-spin" size={12} />}
                     {agent.status === 'done' && (
                       <Tag color="success" style={{ fontSize: 10 }}>
-                        \u2713
+                        ✓
                       </Tag>
                     )}
                     {agent.status === 'error' && (
                       <Tag color="error" style={{ fontSize: 10 }}>
-                        \u2717
+                        ✗
                       </Tag>
                     )}
                     {agent.status === 'done' && (

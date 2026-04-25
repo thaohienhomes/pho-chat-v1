@@ -58,9 +58,14 @@ export const extractPICO = async (
 
   try {
     const raw = await callAI(model, PICO_PROMPT(query), 'extract-pico');
+    // Aggressive cleanup — Gemini sometimes wraps JSON with prose like
+    // "Here is the PICO extraction:" before, or "Note: ..." after, neither
+    // of which the previous code-fence-only strip caught.
     const cleaned = raw
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/```\s*$/i, '')
+      .replace(/^[^{]*?(?={)/s, '')
+      .replace(/}[^}]*$/s, '}')
       .trim();
     const parsed = JSON.parse(cleaned);
 
