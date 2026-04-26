@@ -33,6 +33,7 @@ import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
 import { buildSearchQuery } from '@/utils/research/buildSearchQuery';
+import { MEDICAL_SAFETY_PREFIX } from '@/utils/research/safetyPrompt';
 
 const { TextArea } = Input;
 
@@ -386,6 +387,7 @@ async function callAI(model: string, prompt: string, label = 'unknown'): Promise
             attempt,
             delay_ms: delayMs,
             label,
+            surface: 'deep_research',
           });
           await new Promise<void>((r) => {
             setTimeout(r, delayMs);
@@ -485,8 +487,21 @@ async function callAIStream(
       }
     }
 
-    console.log('[DeepResearch] callAIStream complete:', { length: fullContent.length });
-    return fullContent;
+    // Phase 1.5.3 (Audit #7) — strip chat-template artifacts that occasionally
+    // leak through streaming, matching the buildSearchQuery cleanup from Phase
+    // 1.5.1. Symptom: ".stop" suffix at the end of Key Takeaways or trailing
+    // tokens like <|im_end|>, <|endoftext|>, </stop>. The (\w)stop$ rule only
+    // strips when "stop" has a word char immediately before and is at the very
+    // end — so "non-stop" / "stop bleeding" mid-content are left alone.
+    const cleaned = fullContent
+      .replace(/(<\|?im_end\|?>|<\|?endoftext\|?>|<\/?stop>)\s*$/i, '')
+      .replace(/(\w)stop\s*$/i, '$1')
+      .trimEnd();
+    console.log('[DeepResearch] callAIStream complete:', {
+      length: cleaned.length,
+      stripped: fullContent.length - cleaned.length,
+    });
+    return cleaned;
   } catch (e: any) {
     // Convert AbortError to friendly message
     if (e.name === 'AbortError') {
@@ -510,8 +525,20 @@ async function searchPubMed(query: string, maxResults = 8): Promise<PubMedPaper[
     if (!res.ok) return [];
     const data = await res.json();
     return data.papers || [];
-  } catch {
+  } catch (error) {
     console.warn('[DeepResearch] PubMed search failed, continuing without literature');
+    // Phase 1.5.3 (Audit #1) — surface API outages without relying on user complaints.
+    try {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      (window as any).posthog?.capture('search_source_failed', {
+        error: errMsg.slice(0, 200),
+        query: query.slice(0, 100),
+        source: 'PubMed',
+        surface: 'deep_research',
+      });
+    } catch {
+      /* posthog not loaded */
+    }
     return [];
   }
 }
@@ -537,8 +564,20 @@ async function searchSemanticScholar(query: string, limit = 10): Promise<PubMedP
       title: p.title || '',
       year: p.year || '',
     }));
-  } catch {
+  } catch (error) {
     console.warn('[DeepResearch] Semantic Scholar search failed');
+    // Phase 1.5.3 (Audit #1) — surface API outages without relying on user complaints.
+    try {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      (window as any).posthog?.capture('search_source_failed', {
+        error: errMsg.slice(0, 200),
+        query: query.slice(0, 100),
+        source: 'SemanticScholar',
+        surface: 'deep_research',
+      });
+    } catch {
+      /* posthog not loaded */
+    }
     return [];
   }
 }
@@ -722,6 +761,7 @@ const DeepResearchBody = memo(() => {
     (window as any).posthog?.capture('research_started', {
       model,
       question: question.slice(0, 200),
+      surface: 'deep_research',
     });
 
     try {
@@ -936,6 +976,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         ]);
         (window as any).posthog?.capture('research_no_papers_continued', {
           question: question.slice(0, 200),
+          surface: 'deep_research',
         });
         await runAgentsAndOutline([], false);
         return;
@@ -957,6 +998,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         duration_ms: queryInfo.durationMs,
         fell_back_to_original: queryInfo.fellBackToOriginal,
         original_query: queryInfo.originalQuery.slice(0, 200),
+        surface: 'deep_research',
         translated: queryInfo.translated,
         translated_query: queryInfo.searchQuery.slice(0, 200),
       });
@@ -990,6 +1032,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         papers_per_source: { pubmed: pubmedCount, semantic_scholar: s2Count },
         question: question.slice(0, 200),
         sources: Array.from(searchSources),
+        surface: 'deep_research',
         translated_query: queryInfo.searchQuery.slice(0, 200),
       });
 
@@ -1003,6 +1046,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         (window as any).posthog?.capture('research_no_papers', {
           original_question: queryInfo.originalQuery.slice(0, 200),
           sources: Array.from(searchSources),
+          surface: 'deep_research',
           translated_query: queryInfo.searchQuery.slice(0, 200),
         });
         setStartTime(null);
@@ -1077,6 +1121,7 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
       agent_count: agents.filter((a) => a.status === 'done').length,
       model,
       outline_sections: outline.length,
+      surface: 'deep_research',
     });
 
     const agentFindings = agents
@@ -1113,25 +1158,12 @@ Provide a thorough analysis from your perspective. Use markdown formatting with 
         ? `\n\nIMPORTANT: Only ${pubmedPapers.length} paper(s) were retrieved. The literature base is very limited. Acknowledge this in the Discussion section as a limitation. Do NOT extrapolate beyond what these papers support. Do NOT fabricate additional citations to fill gaps.`
         : '';
 
-    // Bug G fix — Gemini Flash safety filter aggressively refuses medical
-    // content (mental health, suicidality, mortality), emitting a single
-    // "stop" token (~4 chars) instead of a refusal message. Prepend a
-    // clinical-context framing so the model recognises this as a
-    // legitimate professional medical task rather than patient advice.
-    const SAFETY_PREFIX = `You are assisting a licensed physician in conducting a medical literature review for clinical decision support. The retrieved papers describe documented clinical outcomes from peer-reviewed pharmacovigilance studies and randomized trials.
-
-CRITICAL CONTEXT:
-- This is for healthcare professionals, NOT patient-facing content
-- Discussing documented adverse events (including suicidality, depression, mortality) is essential for evidence-based medicine and patient safety
-- Refusing to summarize peer-reviewed medical literature would harm clinical decision-making
-- Your output is a balanced clinical synthesis, not medical advice or a diagnostic recommendation
-
-Produce a comprehensive, evidence-grounded literature review synthesis.
-
----
-
-`;
-
+    // Phase 1.5.2/1.5.3 — Gemini Flash safety filter aggressively refuses
+    // medical content (mental health, suicidality, mortality), emitting a
+    // single "stop" token (~4 chars) instead of a refusal message. Prepend
+    // shared MEDICAL_SAFETY_PREFIX (clinical-context framing) so the model
+    // recognises this as a legitimate professional medical task rather
+    // than patient advice. See src/utils/research/safetyPrompt.ts.
     const prompt = `You are an expert medical academic writer. Write a comprehensive literature review article based on the following outline and research findings.
 
 Clinical Question: "${question}"
@@ -1170,7 +1202,7 @@ ${limitedLitWarning}
 
 Write the full article now in markdown format.`;
 
-    const fullPrompt = SAFETY_PREFIX + prompt;
+    const fullPrompt = MEDICAL_SAFETY_PREFIX + prompt;
 
     // Bug G fix — multi-model fallback. If the primary model returns a
     // suspiciously short payload (e.g. Gemini Flash safety-filter "stop"
@@ -1210,6 +1242,7 @@ Write the full article now in markdown format.`;
             model: tryModel,
             output_length: trimmed.length,
             output_preview: trimmed.slice(0, 100),
+            surface: 'deep_research',
           });
           throw new Error(
             `Model ${tryModel} trả về quá ngắn (${trimmed.length} ký tự, có thể bị safety filter). Đang thử model khác...`,
@@ -1276,6 +1309,7 @@ Write the full article now in markdown format.`;
         (window as any).posthog?.capture('article_generation_complete', {
           generation_time_seconds: Math.round((Date.now() - articleStartTime) / 1000),
           model,
+          surface: 'deep_research',
           word_count: wordCount,
         });
         setStartTime(null);
@@ -1392,6 +1426,7 @@ Generate 3-6 rows for the most important outcomes.`;
       generation_time_seconds: Math.round((Date.now() - articleStartTime) / 1000),
       models_tried: ARTICLE_MODELS_FALLBACK,
       primary_model: model,
+      surface: 'deep_research',
     });
 
     setProgressLines((prev) => [
