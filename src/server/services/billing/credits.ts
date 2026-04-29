@@ -136,9 +136,18 @@ export async function processModelUsage(
     let newTier2Usage = isSameDay ? user.dailyTier2Usage || 0 : 0;
     let newTier3Usage = isSameDay ? user.dailyTier3Usage || 0 : 0;
 
-    // If tier 2/3 slot was already acquired atomically by checkTierAccess,
-    // only handle credit deduction — don't touch tier counters or lastUsageDate
+    // 3. Track points actually deducted — used by the unified usage_logs insert below.
+    //    Set per-branch; defaults to `cost` (atomic-slot path) and is overwritten to
+    //    `finalCost` if the free-tier branch waives it.
+    let pointsDeducted = cost;
+
+    // 4. Branch: atomic-slot path (Tier 2/3) vs counter-update path (Tier 1 / fallback).
+    //    PHO-224: BOTH branches now fall through to the usage_logs insert below.
+    //    The previous early `return;` left every Tier 2/3 paid request invisible
+    //    in usage_logs (points deducted but no log row).
     if (tierSlotAlreadyAcquired && (tier === 2 || tier === 3)) {
+      // Atomic-slot path: tier counters are managed exclusively by atomicAcquireTierSlot()
+      // in checkTierAccess(). Only deduct credits here; don't touch counters or lastUsageDate.
       if (cost > 0) {
         await db
           .update(users)
@@ -151,73 +160,73 @@ export async function processModelUsage(
           `[Credits] Deducted ${cost} Credits (Tier ${tier}, atomic slot). User: ${userId}`,
         );
       }
-      return;
-    }
+      // pointsDeducted already === cost (set above).
+    } else {
+      // Counter-update path: Tier 1 (with free-tier waiver) or non-slot fallback.
+      // Free Tier: first FREE_TIER_LIMIT Tier 1 requests/day are zero-cost.
+      const FREE_TIER_LIMIT = 5;
+      let finalCost = cost;
+      let isFree = false;
 
-    // 3. Free Tier Logic (Tier 1 only)
-    // Free Tier Limit: 5 requests/day for Tier 1 models
-    const FREE_TIER_LIMIT = 5;
-
-    let finalCost = cost;
-    let isFree = false;
-
-    // Increment appropriate tier usage
-    switch (tier) {
-      case 1: {
-        if (newTier1Usage < FREE_TIER_LIMIT) {
-          finalCost = 0; // Free!
-          isFree = true;
+      switch (tier) {
+        case 1: {
+          if (newTier1Usage < FREE_TIER_LIMIT) {
+            finalCost = 0; // Free!
+            isFree = true;
+          }
+          newTier1Usage += 1;
+          break;
         }
-        newTier1Usage += 1;
-        break;
+        case 2:
+        case 3: {
+          // Tier 2/3 counters are ONLY incremented by atomicAcquireTierSlot()
+          // in checkTierAccess(). Do NOT increment here to avoid double-counting.
+          // This was the root cause of the tier limit bypass bug.
+          break;
+        }
+        // No default
       }
-      case 2:
-      case 3: {
-        // Tier 2/3 counters are ONLY incremented by atomicAcquireTierSlot()
-        // in checkTierAccess(). Do NOT increment here to avoid double-counting.
-        // This was the root cause of the tier limit bypass bug.
-        break;
-      }
-      // No default
-    }
 
-    // 4. Update DB — only update tier1 counter + credits.
-    //    Tier 2/3 counters are managed exclusively by atomicAcquireTierSlot().
-    //    On day-reset (isSameDay=false), reset tier 2/3 to 0.
-    const updatePayload: Record<string, any> = {
-      dailyTier1Usage: newTier1Usage,
-      lastUsageDate: now,
-      lifetimeSpent: sql`${users.lifetimeSpent} + ${finalCost}`,
-      phoPointsBalance: sql`GREATEST(0, ${users.phoPointsBalance} - ${finalCost})`,
-    };
-    if (!isSameDay) {
-      // New day: reset tier 2/3 counters (atomicAcquireTierSlot will set to 1 on first use)
-      updatePayload.dailyTier2Usage = 0;
-      updatePayload.dailyTier3Usage = 0;
-    }
-    await db.update(users).set(updatePayload).where(eq(users.id, userId));
-
-    if (process.env.NODE_ENV !== 'production') {
-      if (isFree) {
-        console.log(
-          `[Credits] Free Tier used (${newTier1Usage}/${FREE_TIER_LIMIT}). Cost waived for user ${userId}.`,
-        );
-      } else if (finalCost > 0) {
-        console.log(
-          `[Credits] Deducted ${finalCost} Credits (Tier ${tier}). T1=${newTier1Usage}, T2=${newTier2Usage}, T3=${newTier3Usage}. User: ${userId}`,
-        );
+      // Update DB — only update tier1 counter + credits.
+      // Tier 2/3 counters are managed exclusively by atomicAcquireTierSlot().
+      // On day-reset (isSameDay=false), reset tier 2/3 to 0.
+      const updatePayload: Record<string, any> = {
+        dailyTier1Usage: newTier1Usage,
+        lastUsageDate: now,
+        lifetimeSpent: sql`${users.lifetimeSpent} + ${finalCost}`,
+        phoPointsBalance: sql`GREATEST(0, ${users.phoPointsBalance} - ${finalCost})`,
+      };
+      if (!isSameDay) {
+        // New day: reset tier 2/3 counters (atomicAcquireTierSlot will set to 1 on first use)
+        updatePayload.dailyTier2Usage = 0;
+        updatePayload.dailyTier3Usage = 0;
       }
+      await db.update(users).set(updatePayload).where(eq(users.id, userId));
+
+      if (process.env.NODE_ENV !== 'production') {
+        if (isFree) {
+          console.log(
+            `[Credits] Free Tier used (${newTier1Usage}/${FREE_TIER_LIMIT}). Cost waived for user ${userId}.`,
+          );
+        } else if (finalCost > 0) {
+          console.log(
+            `[Credits] Deducted ${finalCost} Credits (Tier ${tier}). T1=${newTier1Usage}, T2=${newTier2Usage}, T3=${newTier3Usage}. User: ${userId}`,
+          );
+        }
+      }
+
+      pointsDeducted = finalCost;
     }
 
     // NOTE: Redis sync removed — DailyTierRateLimiter.check() already
     // increments pho:ratelimit:* keys via checkTierAccess() in the chat route.
     // The duplicate INCR here was causing admin dashboard to show 2x actual usage.
 
-    // 5. Log to usage_logs with actual model/tier/tokens
+    // 5. Log to usage_logs with actual model/tier/tokens (PHO-224: unified for BOTH branches).
     if (usageLog) {
       try {
         const VND_RATE = 24_167;
-        const costUSD = usageLog.costUSD ?? finalCost * 0.000_04; // fallback: 1 point ≈ $0.00004
+        const costUSD = usageLog.costUSD ?? pointsDeducted * 0.000_04; // fallback: 1 point ≈ $0.00004
         await db.insert(usageLogs).values({
           costUSD,
           costVND: costUSD * VND_RATE,
@@ -225,7 +234,7 @@ export async function processModelUsage(
           model: usageLog.model,
           modelTier: tier,
           outputTokens: usageLog.outputTokens,
-          pointsDeducted: finalCost,
+          pointsDeducted,
           provider: usageLog.provider,
           responseTimeMs: usageLog.responseTimeMs ?? null,
           sessionId: usageLog.sessionId ?? null,
