@@ -118,7 +118,17 @@ async function seed() {
   if (failed > 0) throw new Error(`${failed} seed insertions failed`);
 }
 
-await seed().catch((e) => {
-  console.error('\n❌ Seed failed:', e);
-  throw e;
-});
+// Top-level await fails on tsx default CJS output (Node v24.x). Wrap in async IIFE
+// for CJS compat. process.exit is intentional for CLI exit-code propagation.
+// eslint-disable-next-line unicorn/prefer-top-level-await
+(async () => {
+  try {
+    await seed();
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  } catch (e) {
+    console.error('\n❌ Seed failed:', e);
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(1);
+  }
+})();
