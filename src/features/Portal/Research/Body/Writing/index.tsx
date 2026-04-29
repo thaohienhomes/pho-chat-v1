@@ -1,15 +1,26 @@
 'use client';
 
 import { Button, Tag } from '@lobehub/ui';
-import { Input, Tooltip } from 'antd';
+import { Alert, Input, Modal, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import { Copy, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { useResearchStore } from '@/store/research';
+import { MEDICAL_SAFETY_PREFIX } from '@/utils/research/safetyPrompt';
 
 // ── AI Writing helper ────────────────────────────────────────────────────
+// Phase 1.5.3 (Audit #3) — surface fallback to caller so the UI can warn
+// the user that the section was filled with a placeholder template instead
+// of AI-generated content. Without this the user can ship a draft that
+// still contains literal "[number]" / "[key finding]" tokens.
+interface AIWriteResult {
+  content: string;
+  fallbackReason?: string;
+  usedFallback: boolean;
+}
+
 const aiWriteSection = async (
   sectionKey: string,
   sectionLabel: string,
@@ -19,7 +30,7 @@ const aiWriteSection = async (
     query: string;
     refs: string;
   },
-): Promise<string> => {
+): Promise<AIWriteResult> => {
   const systemInstructions: Record<string, string> = {
     abstract:
       'Write a structured abstract with Background, Objectives, Methods, Results, Conclusions sections. 250 words max.',
@@ -59,7 +70,10 @@ const aiWriteSection = async (
     const res = await fetch('/api/research/ai-summary', {
       body: JSON.stringify({
         model: 'gemini-2.5-flash',
-        prompt,
+        // Phase 1.5.3 — apply shared medical safety framing so Gemini Flash
+        // does not refuse with a "stop" token when generating sections that
+        // mention suicidality / mortality. See safetyPrompt.ts.
+        prompt: MEDICAL_SAFETY_PREFIX + prompt,
         stream: false,
       }),
       credentials: 'include',
@@ -68,8 +82,22 @@ const aiWriteSection = async (
     });
     if (!res.ok) throw new Error(`fail: ${res.status}`);
     const data = await res.json();
-    return data?.text ?? '';
-  } catch {
+    return { content: data?.text ?? '', usedFallback: false };
+  } catch (err) {
+    const fallbackReason = err instanceof Error ? err.message : String(err);
+
+    // Phase 1.5.3 (Audit #3) — track frequency of AI writing failures so we
+    // can size Phase 2 mitigation (better retry, alternate model, etc).
+    try {
+      (window as any).posthog?.capture('writing_fallback_to_template', {
+        error: fallbackReason.slice(0, 200),
+        section_key: sectionKey,
+        surface: 'research_mode',
+      });
+    } catch {
+      /* posthog not loaded */
+    }
+
     // Fallback: template scaffold
     const templates: Record<string, string> = {
       abstract: `## Abstract\n\n**Background:** ${context.query}\n\n**Methods:** Systematic review following PRISMA guidelines.\n\n**Results:** [number] studies included.\n\n**Conclusions:** Further research warranted.`,
@@ -80,9 +108,20 @@ const aiWriteSection = async (
       results: `## Results\n\n### Study Selection\n[n] records identified, [m] included after screening.\n\n### Characteristics of Included Studies\n[Describe study designs, sample sizes, populations].`,
       title: `1. Effectiveness of ${context.pico?.intervention ?? '[intervention]'} in ${context.pico?.population ?? '[population]'}: A Systematic Review\n2. ${context.query}: A Systematic Review and Meta-Analysis\n3. ${context.pico?.intervention ?? '[intervention]'} versus ${context.pico?.comparison ?? '[comparison]'}: Evidence from a Systematic Review`,
     };
-    return templates[sectionKey] ?? `[AI-generated ${sectionLabel} section - edit as needed]`;
+    const content =
+      templates[sectionKey] ?? `[AI-generated ${sectionLabel} section - edit as needed]`;
+    return { content, fallbackReason, usedFallback: true };
   }
 };
+
+// Phase 1.5.3 (Audit #3 bonus) — block accidental publishing of template
+// scaffolds that still contain unfilled placeholders like [number],
+// [key finding]. Conservative regex matches the literal token shapes used
+// in `templates` above. Real prose with bracketed citations like [Smith,
+// 2020] is left alone because the regex only matches these specific keys.
+const PLACEHOLDER_PATTERN =
+  /\[(number|n|m|key finding|gap|recommendation|prior work|search scope, language bias|describe study designs, sample sizes, populations|intervention|population|comparison)]/i;
+const hasUnfilledPlaceholders = (content: string): boolean => PLACEHOLDER_PATTERN.test(content);
 
 const { TextArea } = Input;
 
@@ -282,6 +321,10 @@ const WritingPhase = memo(() => {
   const [expandedSection, setExpandedSection] = useState<string | null>('title');
   // Track which sections are AI-generating
   const [aiGenerating, setAiGenerating] = useState<Record<string, boolean>>({});
+  // Phase 1.5.3 (Audit #3) — sectionKey → fallbackReason for sections that
+  // were filled with the template scaffold instead of AI content. Drives the
+  // per-section warning Alert + Retry button.
+  const [sectionFallback, setSectionFallback] = useState<Record<string, string>>({});
 
   const updateSection = (key: string, content: string) => {
     setSections((prev) => prev.map((s) => (s.key === key ? { ...s, content } : s)));
@@ -291,6 +334,13 @@ const WritingPhase = memo(() => {
   const handleAIWrite = useCallback(
     async (sectionKey: string, sectionLabel: string, existingContent: string) => {
       setAiGenerating((prev) => ({ ...prev, [sectionKey]: true }));
+      // Clear previous fallback for this section so a successful retry hides Alert.
+      setSectionFallback((prev) => {
+        if (!prev[sectionKey]) return prev;
+        const next = { ...prev };
+        delete next[sectionKey];
+        return next;
+      });
       setExpandedSection(sectionKey); // open the section
       const refsText = includedPapers
         .slice(0, 8)
@@ -310,7 +360,13 @@ const WritingPhase = memo(() => {
           query: searchQuery,
           refs: refsText,
         });
-        updateSection(sectionKey, result);
+        updateSection(sectionKey, result.content);
+        if (result.usedFallback) {
+          setSectionFallback((prev) => ({
+            ...prev,
+            [sectionKey]: result.fallbackReason ?? '',
+          }));
+        }
       } finally {
         setAiGenerating((prev) => ({ ...prev, [sectionKey]: false }));
       }
@@ -329,6 +385,19 @@ const WritingPhase = memo(() => {
       .filter((s) => s.content.trim())
       .map((s) => `# ${s.label}\n\n${s.content}`)
       .join('\n\n---\n\n');
+    // Phase 1.5.3 (Audit #3 bonus) — block accidental copy of template
+    // scaffolds with literal "[number]" / "[key finding]" placeholders.
+    if (hasUnfilledPlaceholders(fullText)) {
+      Modal.confirm({
+        cancelText: 'Quay lại chỉnh sửa',
+        content:
+          'Phát hiện các placeholder như [number], [key finding] trong bài viết. Bạn có chắc muốn copy bản này?',
+        okText: 'Vẫn copy',
+        onOk: () => navigator.clipboard.writeText(fullText),
+        title: 'Bài viết còn placeholder chưa điền',
+      });
+      return;
+    }
     navigator.clipboard.writeText(fullText);
   };
 
@@ -353,6 +422,43 @@ const WritingPhase = memo(() => {
         <span className={styles.sectionTitle}>✍️ Manuscript Sections</span>
         {sections.map((section, idx) => (
           <div className={styles.sectionCard} key={section.key}>
+            {/* Phase 1.5.3 — fallback warning when AI writing was unavailable */}
+            {sectionFallback[section.key] !== undefined && (
+              <Alert
+                action={
+                  <Button
+                    onClick={() => handleAIWrite(section.key, section.label, section.content)}
+                    size={'small'}
+                    type={'primary'}
+                  >
+                    Thử lại AI
+                  </Button>
+                }
+                closable
+                description={
+                  <span>
+                    AI writing tạm thời không khả dụng. Phần này hiện chứa template với placeholder
+                    ([number], [key finding], v.v.) cần điền thủ công.
+                    {sectionFallback[section.key] && (
+                      <span style={{ display: 'block', fontSize: 11, marginTop: 4, opacity: 0.65 }}>
+                        Lỗi: {sectionFallback[section.key]}
+                      </span>
+                    )}
+                  </span>
+                }
+                message={`Phần "${section.label}" dùng template thay vì AI`}
+                onClose={() =>
+                  setSectionFallback((prev) => {
+                    const next = { ...prev };
+                    delete next[section.key];
+                    return next;
+                  })
+                }
+                showIcon
+                style={{ marginBottom: 8 }}
+                type="warning"
+              />
+            )}
             <div
               className={styles.sectionHeader}
               onClick={() =>

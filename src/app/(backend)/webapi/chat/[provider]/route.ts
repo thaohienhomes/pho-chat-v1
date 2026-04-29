@@ -644,10 +644,13 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           e?.type === AgentRuntimeErrorType.ProviderBizError ||
           e?.code === 'ECONNRESET';
 
-        if (!isRetryable && index < priorityList.length - 1) {
+        if (!isRetryable) {
           console.warn(
-            `[Chat API] Error might not be retryable, but continuing failover as safety measure.`,
+            `[Chat API] Non-retryable error from ${targetProvider}:`,
+            e?.status,
+            e?.message,
           );
+          throw e; // PHO-226: Stop cascade — failover only for 5xx/429/ECONNRESET
         }
 
         if (index === priorityList.length - 1) {
@@ -676,11 +679,13 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     const resolvedTier = getModelTier(actualModelUsed);
     const resolvedTierConfig = MODEL_TIERS[resolvedTier as keyof typeof MODEL_TIERS];
 
-    // Use DB pricing if available, otherwise derive from MODEL_TIERS config
+    // Use DB pricing if available, otherwise derive from MODEL_TIERS config.
+    // PHO-223: align fallback field names with DB schema (input_cost_per_1m / output_cost_per_1m).
+    // Both DB rows and MODEL_TIERS values are points/1M tokens — consistent unit.
     const activePricing = pricing || {
       id: 'default',
-      inputPrice: resolvedTierConfig?.inputCostPer1M ?? 100,
-      outputPrice: resolvedTierConfig?.outputCostPer1M ?? 300,
+      inputCostPer1M: resolvedTierConfig?.inputCostPer1M ?? 100,
+      outputCostPer1M: resolvedTierConfig?.outputCostPer1M ?? 300,
       tier: resolvedTier,
     };
 
@@ -728,8 +733,10 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
 
           // Calculate Cost (per 1M tokens)
           // Cost = (Input * InputPrice + Output * OutputPrice) / 1,000,000
-          const inputPrice = activePricing.inputPrice ?? 0;
-          const outputPrice = activePricing.outputPrice ?? 0;
+          // PHO-223: read points-denominated rates (input_cost_per_1m / output_cost_per_1m).
+          // inputPrice/outputPrice are legacy VND columns (default 0) — using them yielded cost=0.
+          const inputPrice = activePricing.inputCostPer1M ?? 0;
+          const outputPrice = activePricing.outputCostPer1M ?? 0;
           const cost = Math.ceil(
             (inputTokens * inputPrice + outputTokens * outputPrice) / 1_000_000,
           );
@@ -797,8 +804,10 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
             (data.messages?.reduce((acc, msg) => acc + countTokens(String(msg.content || '')), 0) ||
               0);
 
-          const inputPrice = activePricing.inputPrice ?? 0;
-          const outputPrice = activePricing.outputPrice ?? 0;
+          // PHO-223: read points-denominated rates (input_cost_per_1m / output_cost_per_1m).
+          // inputPrice/outputPrice are legacy VND columns (default 0) — using them yielded cost=0.
+          const inputPrice = activePricing.inputCostPer1M ?? 0;
+          const outputPrice = activePricing.outputCostPer1M ?? 0;
           const cost = Math.ceil(
             (inputTokens * inputPrice + outputTokens * outputPrice) / 1_000_000,
           );

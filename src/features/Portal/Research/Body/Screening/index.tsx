@@ -1,22 +1,32 @@
 'use client';
 
 import { Button, Tag } from '@lobehub/ui';
-import { Select, Tooltip } from 'antd';
+import { Alert, Select, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import { Bot, CheckCircle, ChevronLeft, Loader2, Sparkles, XCircle } from 'lucide-react';
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { type ScreeningDecision, useResearchStore } from '@/store/research';
+import { MEDICAL_SAFETY_PREFIX } from '@/utils/research/safetyPrompt';
 
 // ── AI Screening helper ────────────────────────────────────────────────────
 type AIVerdict = { decision: 'excluded' | 'included'; paperId: string; reason: string };
+
+// Phase 1.5.3 (Audit #2) — surface fallback to caller so the UI can warn the
+// user that AI screening was unavailable and they're seeing keyword-only
+// decisions. Without this, users don't know quality silently degraded.
+interface AIScreenResult {
+  fallbackReason?: string;
+  usedFallback: boolean;
+  verdicts: AIVerdict[];
+}
 
 const aiScreenBatch = async (
   papers: Array<{ abstract?: string; id: string; title: string }>,
   pico: { comparison: string; intervention: string; outcome: string; population: string } | null,
   query: string,
-): Promise<AIVerdict[]> => {
+): Promise<AIScreenResult> => {
   // Build a concise screener prompt
   const picoTxt = pico
     ? `PICO: P=${pico.population}, I=${pico.intervention}, C=${pico.comparison}, O=${pico.outcome}`
@@ -41,7 +51,10 @@ const aiScreenBatch = async (
     const res = await fetch('/api/research/ai-summary', {
       body: JSON.stringify({
         model: 'gemini-2.5-flash',
-        prompt,
+        // Phase 1.5.3 — apply shared medical safety framing so Gemini Flash
+        // does not refuse with a "stop" token when paper abstracts mention
+        // suicidality / mortality / depression. See safetyPrompt.ts.
+        prompt: MEDICAL_SAFETY_PREFIX + prompt,
         stream: false,
       }),
       credentials: 'include',
@@ -52,10 +65,25 @@ const aiScreenBatch = async (
     const data = await res.json();
     const text: string = data?.text ?? '';
     const parsed = JSON.parse(text.replaceAll(/```[\s\w]*/g, '').trim()) as AIVerdict[];
-    return parsed;
-  } catch {
+    return { usedFallback: false, verdicts: parsed };
+  } catch (err) {
+    const fallbackReason = err instanceof Error ? err.message : String(err);
+
+    // Phase 1.5.3 (Audit #2) — track frequency of AI screening failures.
+    // Without this we can't tell if 1% of users hit it or 50%, which gates
+    // any Phase 2 work on screening quality.
+    try {
+      (window as any).posthog?.capture('screening_fallback_to_keyword', {
+        error: fallbackReason.slice(0, 200),
+        paper_count: papers.length,
+        surface: 'research_mode',
+      });
+    } catch {
+      /* posthog not loaded */
+    }
+
     // Fallback: AI not available — return heuristic decisions based on keywords
-    return papers.map((p) => {
+    const verdicts = papers.map((p) => {
       const titleLower = (p.title + (p.abstract ?? '')).toLowerCase();
       const queryWords = query
         .toLowerCase()
@@ -64,11 +92,12 @@ const aiScreenBatch = async (
       const matches = queryWords.filter((w) => titleLower.includes(w)).length;
       const score = queryWords.length > 0 ? matches / queryWords.length : 0;
       return {
-        decision: score >= 0.3 ? 'included' : 'excluded',
+        decision: (score >= 0.3 ? 'included' : 'excluded') as 'excluded' | 'included',
         paperId: p.id,
         reason: score >= 0.3 ? 'Keyword match ≥30%' : 'Low keyword relevance',
       };
     });
+    return { fallbackReason, usedFallback: true, verdicts };
   }
 };
 
@@ -240,6 +269,11 @@ const ScreeningPhase = memo(() => {
   const [pendingExclude, setPendingExclude] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiScreenedCount, setAiScreenedCount] = useState(0);
+  // Phase 1.5.3 (Audit #2) — track when AI screening fell back to keyword
+  // matching so we can show a warning Alert + Retry instead of silently
+  // marking papers via low-quality regex.
+  const [aiUsedFallback, setAiUsedFallback] = useState(false);
+  const [aiFallbackReason, setAiFallbackReason] = useState('');
 
   const EXCLUSION_REASONS = [
     { label: 'Wrong population', value: 'Wrong population' },
@@ -284,10 +318,13 @@ const ScreeningPhase = memo(() => {
     );
     if (pendingPapers.length === 0) return;
     setAiLoading(true);
+    // Clear any prior fallback warning so a successful retry hides the Alert.
+    setAiUsedFallback(false);
+    setAiFallbackReason('');
     try {
-      const verdicts = await aiScreenBatch(pendingPapers, pico, searchQuery);
+      const result = await aiScreenBatch(pendingPapers, pico, searchQuery);
       let count = 0;
-      for (const v of verdicts) {
+      for (const v of result.verdicts) {
         const id = v.paperId ?? (v as { id?: string }).id;
         if (id) {
           screenPaper(id, v.decision, v.reason);
@@ -295,6 +332,10 @@ const ScreeningPhase = memo(() => {
         }
       }
       setAiScreenedCount(count);
+      if (result.usedFallback) {
+        setAiUsedFallback(true);
+        setAiFallbackReason(result.fallbackReason ?? '');
+      }
     } finally {
       setAiLoading(false);
     }
@@ -366,6 +407,33 @@ const ScreeningPhase = memo(() => {
           </span>
         </Flexbox>
       </div>
+
+      {/* Phase 1.5.3 — fallback warning when AI screening was unavailable */}
+      {aiUsedFallback && (
+        <Alert
+          action={
+            <Button onClick={handleAIScreen} size={'small'} type={'primary'}>
+              Thử lại AI
+            </Button>
+          }
+          closable
+          description={
+            <span>
+              Hệ thống đã dùng phương pháp lọc theo từ khóa thay thế. Kết quả có thể kém chính xác
+              hơn AI screening đầy đủ. Hãy nhấn &ldquo;Thử lại&rdquo; để gọi lại AI.
+              {aiFallbackReason && (
+                <span style={{ display: 'block', fontSize: 11, marginTop: 4, opacity: 0.65 }}>
+                  Lỗi: {aiFallbackReason}
+                </span>
+              )}
+            </span>
+          }
+          message="AI screening tạm thời không khả dụng"
+          onClose={() => setAiUsedFallback(false)}
+          showIcon
+          type="warning"
+        />
+      )}
 
       {/* Quick Actions */}
       <Flexbox gap={8} horizontal wrap={'wrap'}>

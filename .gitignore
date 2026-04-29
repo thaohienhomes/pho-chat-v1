@@ -132,3 +132,5 @@ vietnam-market-testing-config.json
 .github\instructions\snyk_rules.instructions.md
 scripts/add-missing-issues.js
 scripts/setup-linear.js
+
+.vercel

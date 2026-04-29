@@ -181,6 +181,29 @@ const initialState = {
 
 // ========== API Services ==========
 
+// Phase 1.5.3 (Audit Finding #1) — emit telemetry whenever a search source
+// fails so we can detect API outages (PubMed eutils, OpenAlex, etc) without
+// relying on user complaints. Always paired with `return []` so the search
+// continues with the remaining sources. The try/catch around posthog
+// guarantees a missing analytics global never breaks the search path.
+const captureSearchSourceFailed = (
+  source: SearchSource,
+  error: unknown,
+  context: { query?: string; surface?: string },
+) => {
+  try {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    (window as any).posthog?.capture('search_source_failed', {
+      error: errMsg.slice(0, 200),
+      query: (context.query || '').slice(0, 100),
+      source,
+      surface: context.surface || 'research_mode',
+    });
+  } catch {
+    /* posthog not loaded — skip silently */
+  }
+};
+
 const searchPubMed = async (query: string, maxResults = 10, offset = 0): Promise<PaperResult[]> => {
   try {
     const response = await fetch('/api/plugins/pubmed/search', {
@@ -207,6 +230,7 @@ const searchPubMed = async (query: string, maxResults = 10, offset = 0): Promise
     }));
   } catch (error) {
     console.error('[Research] PubMed search error:', error);
+    captureSearchSourceFailed('PubMed', error, { query, surface: 'research_mode' });
     return [];
   }
 };
@@ -240,6 +264,7 @@ const searchOpenAlex = async (
     }));
   } catch (error) {
     console.error('[Research] OpenAlex search error:', error);
+    captureSearchSourceFailed('OpenAlex', error, { query, surface: 'research_mode' });
     return [];
   }
 };
@@ -270,6 +295,7 @@ const searchArXiv = async (query: string, maxResults = 10, offset = 0): Promise<
     }));
   } catch (error) {
     console.error('[Research] ArXiv search error:', error);
+    captureSearchSourceFailed('ArXiv', error, { query, surface: 'research_mode' });
     return [];
   }
 };
@@ -315,6 +341,7 @@ const searchClinicalTrials = async (
     }));
   } catch (error) {
     console.error('[Research] ClinicalTrials.gov search error:', error);
+    captureSearchSourceFailed('ClinicalTrials.gov', error, { query, surface: 'research_mode' });
     return [];
   }
 };
