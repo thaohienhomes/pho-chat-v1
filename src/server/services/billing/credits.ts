@@ -337,7 +337,7 @@ async function atomicAcquireTierSlot(
   userId: string,
   tier: 2 | 3,
   dailyLimit: number,
-): Promise<{ acquired: boolean; newUsage: number }> {
+): Promise<{ acquired: boolean; error?: string; newUsage: number }> {
   const db = await getServerDB();
 
   try {
@@ -403,10 +403,18 @@ async function atomicAcquireTierSlot(
       return { acquired: true, newUsage: Number(rows[0].daily_tier2_usage) };
     }
     return { acquired: false, newUsage: dailyLimit };
-  } catch (e) {
-    console.error(`❌ atomicAcquireTierSlot failed (tier ${tier}):`, e);
-    // Fail open to avoid blocking legitimate users on DB errors
-    return { acquired: true, newUsage: 0 };
+  } catch (e: any) {
+    console.error('❌ atomicAcquireTierSlot failed', {
+      error: e?.message,
+      stack: e?.stack,
+      tier,
+      userId,
+    });
+    // PHO-227: Fail-CLOSED on DB error.
+    // Was: return { acquired: true } → silent unlimited Tier 2/3 bypass on DB hiccup.
+    // Now: return acquired:false → caller surfaces standard "tier cap reached" UX.
+    // PostHog tracking + dedicated retry UX deferred to PHO-231 (Phase 2.3 observability).
+    return { acquired: false, error: 'DB_ERROR', newUsage: 0 };
   }
 }
 
