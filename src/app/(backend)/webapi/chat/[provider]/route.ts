@@ -644,10 +644,13 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           e?.type === AgentRuntimeErrorType.ProviderBizError ||
           e?.code === 'ECONNRESET';
 
-        if (!isRetryable && index < priorityList.length - 1) {
+        if (!isRetryable) {
           console.warn(
-            `[Chat API] Error might not be retryable, but continuing failover as safety measure.`,
+            `[Chat API] Non-retryable error from ${targetProvider}:`,
+            e?.status,
+            e?.message,
           );
+          throw e; // PHO-226: Stop cascade — failover only for 5xx/429/ECONNRESET
         }
 
         if (index === priorityList.length - 1) {
