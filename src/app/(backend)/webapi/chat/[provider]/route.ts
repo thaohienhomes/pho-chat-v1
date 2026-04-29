@@ -348,14 +348,23 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       prefetchedCreditStatus = await getUserCreditBalance(jwtPayload.userId);
       const balance = prefetchedCreditStatus?.balance || 0;
 
-      // Allow small overdraft (e.g. -10k VND) to prevent cutoff mid-sentence
-      // But block if significantly negative
-      if (balance < -10_000) {
+      // PHO-225: block when Phở Points are depleted AND no Tier 1 free quota left.
+      // The previous `balance < -10_000` check could never trigger because
+      // deductPhoCredits floors balance at 0 via GREATEST(0, ...), so any user
+      // who hit 0 kept chatting for free. Tier 1 free quota (5/day) is preserved
+      // — users can still send their daily free messages with 0 balance.
+      // Free users requesting Tier 2/3 are blocked downstream by canUseTier.
+      const FREE_TIER_LIMIT = 5;
+      const dailyTier1Usage = prefetchedCreditStatus?.dailyTier1Usage ?? 0;
+      const hasFreeTier1Quota = dailyTier1Usage < FREE_TIER_LIMIT;
+
+      if (balance <= 0 && !hasFreeTier1Quota) {
         console.warn(
-          `🚫 Blocked request due to negative balance: ${balance} (User: ${jwtPayload.userId})`,
+          `🚫 Blocked: balance ${balance} <= 0 and Tier 1 free quota exhausted ` +
+            `(${dailyTier1Usage}/${FREE_TIER_LIMIT}). User: ${jwtPayload.userId}`,
         );
         return createErrorResponse(AgentRuntimeErrorType.InsufficientQuota, {
-          error: { message: 'Phở Points không đủ. Vui lòng nạp thêm để tiếp tục.' },
+          error: { message: 'Phở Points đã hết. Vui lòng nạp thêm để tiếp tục.' },
           provider: 'pho-chat',
         });
       }

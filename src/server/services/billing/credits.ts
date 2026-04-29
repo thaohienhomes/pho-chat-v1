@@ -98,6 +98,17 @@ export interface UsageLogParams {
   sessionId?: string;
 }
 
+/**
+ * Get today's date string in Vietnam timezone (UTC+7) for daily-counter comparison.
+ * Used by both processModelUsage / atomicAcquireTierSlot and the daily-request-cap
+ * check downstream — keeps every "is it the same VN day?" decision aligned.
+ */
+function getVietnamDateString(date: Date = new Date()): string {
+  // UTC+7 (no DST in Vietnam): add 7 hours in milliseconds.
+  const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return vnTime.toISOString().slice(0, 10);
+}
+
 export async function processModelUsage(
   userId: string,
   cost: number,
@@ -124,12 +135,17 @@ export async function processModelUsage(
     if (userRows.length === 0) return;
     const user = userRows[0];
 
-    // 2. Check for daily reset (reset at midnight)
-    const lastDate = new Date(user.lastUsageDate || 0);
-    const isSameDay =
-      lastDate.getDate() === now.getDate() &&
-      lastDate.getMonth() === now.getMonth() &&
-      lastDate.getFullYear() === now.getFullYear();
+    // 2. Check for daily reset using Vietnam timezone (UTC+7).
+    // PHO-228: previously compared via JS Date.getDate/Month/Year which on
+    // Vercel resolves to UTC. Daily counters were resetting at 00:00 UTC
+    // = 07:00 VN, giving every Vietnam user ~7h of "extra" daily quota each
+    // morning. Now aligned with the rest of the billing path that already
+    // uses getVietnamDateString (see checkDailyRequestCap).
+    const todayVN = getVietnamDateString(now);
+    const lastUsageVN = user.lastUsageDate
+      ? getVietnamDateString(new Date(user.lastUsageDate))
+      : '';
+    const isSameDay = lastUsageVN === todayVN;
 
     // If not same day, reset all tier usage to 0
     let newTier1Usage = isSameDay ? user.dailyTier1Usage || 0 : 0;
@@ -355,21 +371,21 @@ async function atomicAcquireTierSlot(
         UPDATE users
         SET
           daily_tier3_usage = CASE
-            WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 1
+            WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 1
             ELSE daily_tier3_usage + 1
           END,
           daily_tier2_usage = CASE
-            WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 0
+            WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 0
             ELSE daily_tier2_usage
           END,
           daily_tier1_usage = CASE
-            WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 0
+            WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 0
             ELSE daily_tier1_usage
           END,
           last_usage_date = NOW()
         WHERE id = ${userId}
           AND (
-            (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE)
+            (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
             OR daily_tier3_usage < ${dailyLimit}
           )
         RETURNING daily_tier3_usage
@@ -387,21 +403,21 @@ async function atomicAcquireTierSlot(
       UPDATE users
       SET
         daily_tier2_usage = CASE
-          WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 1
+          WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 1
           ELSE daily_tier2_usage + 1
         END,
         daily_tier3_usage = CASE
-          WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 0
+          WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 0
           ELSE daily_tier3_usage
         END,
         daily_tier1_usage = CASE
-          WHEN (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE) THEN 0
+          WHEN (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) THEN 0
           ELSE daily_tier1_usage
         END,
         last_usage_date = NOW()
       WHERE id = ${userId}
         AND (
-          (last_usage_date IS NULL OR last_usage_date::date < CURRENT_DATE)
+          (last_usage_date IS NULL OR (last_usage_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
           OR daily_tier2_usage < ${dailyLimit}
         )
       RETURNING daily_tier2_usage
@@ -511,13 +527,6 @@ export async function checkTierAccess(
 // Uses existing tier counters from getUserCreditBalance() (no extra DB query)
 // Resets at 00:00 UTC+7 (Vietnam timezone)
 // ============================================================================
-
-/** Get today's date string in Vietnam timezone (UTC+7) for comparison */
-function getVietnamDateString(date: Date = new Date()): string {
-  // UTC+7: add 7 hours in milliseconds
-  const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
-  return vnTime.toISOString().slice(0, 10);
-}
 
 /**
  * Check if user has exceeded their daily request cap.
