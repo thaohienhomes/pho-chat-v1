@@ -20,6 +20,11 @@ export const LobeAnalyticsProviderWrapper = memo<Props>(({ children }) => {
         measurementId: analyticsEnv.GOOGLE_ANALYTICS_MEASUREMENT_ID ?? '',
       }}
       postHogConfig={{
+        // PHO-232: enable browser exception autocapture so $exception events
+        // ship with non-null payloads. Read these via `properties.$exception_list`
+        // (array) — the legacy flat fields ($exception_type/_message/_stack)
+        // were removed in PostHog JS ≥ 1.95.
+        capture_exceptions: true,
         capture_performance: { web_vitals: true },
         debug: analyticsEnv.DEBUG_POSTHOG_ANALYTICS,
         enabled: analyticsEnv.NEXT_PUBLIC_POSTHOG_ENABLED,
