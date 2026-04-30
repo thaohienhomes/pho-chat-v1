@@ -93,6 +93,11 @@ export interface UsageLogParams {
   inputTokens: number;
   model: string;
   outputTokens: number;
+  // True when the stream aborted before completion. Counts what was already
+  // consumed from the gateway so the user is debited for partial usage too —
+  // otherwise mid-stream disconnects let users escape billing while the
+  // gateway has already charged us.
+  partial?: boolean;
   provider: string;
   responseTimeMs?: number;
   sessionId?: string;
@@ -247,6 +252,7 @@ export async function processModelUsage(
           costUSD,
           costVND: costUSD * VND_RATE,
           inputTokens: usageLog.inputTokens,
+          metadata: usageLog.partial ? { partial: true } : null,
           model: usageLog.model,
           modelTier: tier,
           outputTokens: usageLog.outputTokens,

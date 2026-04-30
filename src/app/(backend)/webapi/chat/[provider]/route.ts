@@ -719,11 +719,17 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       // STREAMING: Tee the stream to audit usage
       const [stream1, stream2] = bodyStream.tee();
 
-      // Process audit in background (don't await)
+      // Process audit in background (don't await).
+      // PHO-230: billing runs in `finally` so a mid-stream abort (user disconnect,
+      // network drop) still debits the user for tokens already streamed. The
+      // gateway has already charged us for those tokens; the previous silent
+      // catch here let the user escape billing entirely.
       (async () => {
+        let accumulatedText = '';
+        let completed = false;
+
         try {
           const reader = stream2.getReader();
-          let accumulatedText = '';
           const decoder = new TextDecoder();
 
           for (;;) {
@@ -731,46 +737,57 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
             if (done) break;
             accumulatedText += decoder.decode(value, { stream: true });
           }
-
-          const responseTimeMs = Date.now() - requestStartTime;
-
-          // Calculate tokens
-          const outputTokens = countTokens(accumulatedText);
-          const inputTokens =
-            data.messages?.reduce((acc, msg) => acc + countTokens(String(msg.content || '')), 0) ||
-            0;
-
-          // Calculate Cost (per 1M tokens)
-          // Cost = (Input * InputPrice + Output * OutputPrice) / 1,000,000
-          // PHO-223: read points-denominated rates (input_cost_per_1m / output_cost_per_1m).
-          // inputPrice/outputPrice are legacy VND columns (default 0) — using them yielded cost=0.
-          const inputPrice = activePricing.inputCostPer1M ?? 0;
-          const outputPrice = activePricing.outputCostPer1M ?? 0;
-          const cost = Math.ceil(
-            (inputTokens * inputPrice + outputTokens * outputPrice) / 1_000_000,
-          );
-
-          console.log(
-            `📉 Streaming Usage: ${inputTokens} in / ${outputTokens} out. Cost: ${cost} Credits. Time: ${responseTimeMs}ms`,
-          );
-
-          if (jwtPayload.userId) {
-            await processModelUsage(
-              jwtPayload.userId,
-              cost,
-              activePricing.tier || 1,
-              tierSlotAcquired,
-              {
-                inputTokens,
-                model: actualModelUsed,
-                outputTokens,
-                provider: actualProviderUsed,
-                responseTimeMs,
-              },
-            );
-          }
+          completed = true;
         } catch (e) {
-          console.error('Failed to audits stream:', e);
+          console.warn('[Chat API] Stream aborted mid-response, billing partial usage:', {
+            accumulatedChars: accumulatedText.length,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        } finally {
+          try {
+            const responseTimeMs = Date.now() - requestStartTime;
+
+            // Calculate tokens (works for completed and partial streams alike).
+            const outputTokens = countTokens(accumulatedText);
+            const inputTokens =
+              data.messages?.reduce(
+                (acc, msg) => acc + countTokens(String(msg.content || '')),
+                0,
+              ) || 0;
+
+            // Calculate Cost (per 1M tokens).
+            // PHO-223: read points-denominated rates (input_cost_per_1m / output_cost_per_1m).
+            // inputPrice/outputPrice are legacy VND columns (default 0) — using them yielded cost=0.
+            const inputPrice = activePricing.inputCostPer1M ?? 0;
+            const outputPrice = activePricing.outputCostPer1M ?? 0;
+            const cost = Math.ceil(
+              (inputTokens * inputPrice + outputTokens * outputPrice) / 1_000_000,
+            );
+
+            console.log(
+              `📉 Streaming Usage${completed ? '' : ' (PARTIAL — aborted)'}: ${inputTokens} in / ${outputTokens} out. Cost: ${cost} Credits. Time: ${responseTimeMs}ms`,
+            );
+
+            // Skip only on absolute zero (no input parsed, no output streamed).
+            if (jwtPayload.userId && (inputTokens > 0 || outputTokens > 0)) {
+              await processModelUsage(
+                jwtPayload.userId,
+                cost,
+                activePricing.tier || 1,
+                tierSlotAcquired,
+                {
+                  inputTokens,
+                  model: actualModelUsed,
+                  outputTokens,
+                  partial: !completed,
+                  provider: actualProviderUsed,
+                  responseTimeMs,
+                },
+              );
+            }
+          } catch (billingError) {
+            console.error('[Chat API] Billing failed after stream:', billingError);
+          }
         }
       })();
 
