@@ -50,6 +50,7 @@ export async function meterEmbeddingUsage({
 
   try {
     await processModelUsage(userId, cost, 1, false, {
+      feature: 'embedding',
       inputTokens,
       model,
       outputTokens: 0,

@@ -13,6 +13,7 @@ import {
 import { users } from '@/database/schemas';
 import { usageLogs } from '@/database/schemas/usage';
 import { getServerDB } from '@/database/server';
+import { captureAiGeneration } from '@/libs/posthog-server';
 
 export async function addPhoCredits(userId: string, amount: number) {
   try {
@@ -90,6 +91,11 @@ export async function deductPhoCredits(userId: string, amount: number) {
 
 export interface UsageLogParams {
   costUSD?: number;
+  /**
+   * PHO-231: feature label so PostHog can split spend by surface
+   * (chat / embedding / artifact / summary / ...). Defaults to 'chat'.
+   */
+  feature?: string;
   inputTokens: number;
   model: string;
   outputTokens: number;
@@ -245,9 +251,10 @@ export async function processModelUsage(
 
     // 5. Log to usage_logs with actual model/tier/tokens (PHO-224: unified for BOTH branches).
     if (usageLog) {
+      const VND_RATE = 24_167;
+      const costUSD = usageLog.costUSD ?? pointsDeducted * 0.000_04; // fallback: 1 point ≈ $0.00004
+
       try {
-        const VND_RATE = 24_167;
-        const costUSD = usageLog.costUSD ?? pointsDeducted * 0.000_04; // fallback: 1 point ≈ $0.00004
         await db.insert(usageLogs).values({
           costUSD,
           costVND: costUSD * VND_RATE,
@@ -266,6 +273,22 @@ export async function processModelUsage(
       } catch (logErr) {
         console.warn('⚠️ Failed to insert usage_logs:', logErr);
       }
+
+      // PHO-231: emit $ai_generation to PostHog so the cost dashboard sees
+      // every metered call (chat, embeddings, ...) — not just send_message.
+      // Fire-and-forget; observability must never block billing.
+      captureAiGeneration({
+        costPoints: pointsDeducted,
+        costUSD,
+        feature: usageLog.feature ?? 'chat',
+        inputTokens: usageLog.inputTokens,
+        latencyMs: usageLog.responseTimeMs,
+        model: usageLog.model,
+        outputTokens: usageLog.outputTokens,
+        partial: usageLog.partial,
+        provider: usageLog.provider,
+        userId,
+      });
     }
   } catch (e) {
     console.error('❌ Failed to process model usage:', e);
