@@ -1218,9 +1218,21 @@ Write the full article now in markdown format.`;
 
     const maxRetries = ARTICLE_MODELS_FALLBACK.length;
     let lastError: Error | null = null;
+    // PHO-236: keep a structured trail of every attempt so the failure event
+    // can show *which* model failed *why*, not just the last error message.
+    const attemptHistory: Array<{
+      attempt: number;
+      durationMs: number;
+      errorMessage: string;
+      errorName: string;
+      errorStatus?: number;
+      model: string;
+      outputLength?: number;
+    }> = [];
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       const tryModel = ARTICLE_MODELS_FALLBACK[attempt];
+      const attemptStart = Date.now();
       try {
         if (attempt > 0) {
           setProgressLines((prev) => [
@@ -1413,16 +1425,32 @@ Generate 3-6 rows for the most important outcomes.`;
         return; // Success — exit retry loop
       } catch (e: any) {
         lastError = e;
-        console.error(
-          `[DeepResearch] Article attempt ${attempt + 1} (model=${tryModel}) failed:`,
-          e.message,
-        );
+        // PHO-236: capture richer per-attempt detail. The aggregated
+        // article_generation_failed event below ships this whole array
+        // so we can finally see if the 31% failures cluster on a model,
+        // a status code, or a content-length pattern.
+        attemptHistory.push({
+          attempt: attempt + 1,
+          durationMs: Date.now() - attemptStart,
+          errorMessage: typeof e?.message === 'string' ? e.message.slice(0, 500) : String(e),
+          errorName: e?.name ?? 'Error',
+          errorStatus: typeof e?.status === 'number' ? e.status : undefined,
+          model: tryModel,
+          outputLength: typeof e?.outputLength === 'number' ? e.outputLength : undefined,
+        });
+        console.error(`[DeepResearch] Article attempt ${attempt + 1} (model=${tryModel}) failed:`, {
+          message: e?.message,
+          name: e?.name,
+          status: e?.status,
+        });
       }
     }
 
     // All retries failed
     (window as any).posthog?.capture('article_generation_failed', {
+      attempt_history: attemptHistory,
       error: lastError?.message || 'Unknown error',
+      error_name: lastError?.name ?? 'Error',
       generation_time_seconds: Math.round((Date.now() - articleStartTime) / 1000),
       models_tried: ARTICLE_MODELS_FALLBACK,
       primary_model: model,
