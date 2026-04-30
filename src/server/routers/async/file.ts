@@ -14,6 +14,7 @@ import { fileEnv } from '@/envs/file';
 import { asyncAuthedProcedure, asyncRouter as router } from '@/libs/trpc/async';
 import { getServerDefaultFilesConfig } from '@/server/globalConfig';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import { meterEmbeddingUsage } from '@/server/services/billing/embeddingMetering';
 import { ChunkService } from '@/server/services/chunk';
 import { FileService } from '@/server/services/file';
 import {
@@ -98,10 +99,20 @@ export const fileRouter = router({
 
                 console.log(`run embedding task ${index + 1}`);
 
+                const chunkTexts = chunks.map((c) => c.text);
+
                 const embeddings = await agentRuntime.embeddings({
                   dimensions: 1024,
-                  input: chunks.map((c) => c.text),
+                  input: chunkTexts,
                   model,
+                });
+
+                // PHO-229: meter file-indexing embeddings (the highest-volume path).
+                await meterEmbeddingUsage({
+                  inputs: chunkTexts,
+                  model,
+                  provider,
+                  userId: ctx.userId,
                 });
 
                 const items: NewEmbeddingsItem[] =

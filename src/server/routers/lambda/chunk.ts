@@ -14,6 +14,7 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { keyVaults, serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { getServerDefaultFilesConfig } from '@/server/globalConfig';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import { meterEmbeddingUsage } from '@/server/services/billing/embeddingMetering';
 import { ChunkService } from '@/server/services/chunk';
 import { SemanticSearchSchema } from '@/types/rag';
 
@@ -136,6 +137,14 @@ export const chunkRouter = router({
       });
       console.timeEnd('embedding');
 
+      // PHO-229: meter embedding cost — previously these calls bypassed billing.
+      await meterEmbeddingUsage({
+        inputs: input.query,
+        model,
+        provider,
+        userId: ctx.userId,
+      });
+
       return ctx.chunkModel.semanticSearch({
         embedding: embeddings![0],
         fileIds: input.fileIds,
@@ -169,6 +178,14 @@ export const chunkRouter = router({
             dimensions: 1024,
             input: query,
             model,
+          });
+
+          // PHO-229: meter embedding cost for the chat-RAG path.
+          await meterEmbeddingUsage({
+            inputs: query,
+            model,
+            provider,
+            userId: ctx.userId,
           });
 
           embedding = embeddings![0];
