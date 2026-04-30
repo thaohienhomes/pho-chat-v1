@@ -1125,54 +1125,31 @@ export function getDailyTierLimit(planCode: string, tier: number): number {
 // ============================================================================
 
 export const DAILY_REQUEST_CAP: Record<string, number> = {
-  
-  
-// Pro plans
-gl_premium: 500,
-  
+  // Pro plans
+  gl_premium: 500,
 
+  // Basic plans
+  gl_standard: 100,
 
+  // Free / unknown — strict cap
+  gl_starter: 20,
 
-// Basic plans
-gl_standard: 100,
+  // Ultimate / Lifetime — generous cap
+  lifetime_early_bird: 1000,
 
-  
-  
+  lifetime_last_call: 1000,
 
+  lifetime_standard: 1000,
 
-// Free / unknown — strict cap
-gl_starter: 20,
+  // Medical beta — moderate cap (was burning 71% of total cost)
+  medical_beta: 50,
 
-  
-  
+  vn_basic: 100,
 
-// Ultimate / Lifetime — generous cap
-lifetime_early_bird: 1000,
-  
-
-
-lifetime_last_call: 1000,
-
-  
-  
-
-lifetime_standard: 1000,
-  
-
-// Medical beta — moderate cap (was burning 71% of total cost)
-medical_beta: 50,
-
-  
-  
-
-vn_basic: 100,
-
-  
-  
-vn_free: 20,
+  vn_free: 20,
   // Premium plans
-vn_premium: 500,
-  vn_pro: 200,
+  vn_premium: 200,
+  vn_pro: 500,
   vn_team: 1000,
   vn_ultimate: 1000,
 };

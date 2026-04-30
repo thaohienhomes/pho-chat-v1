@@ -47,6 +47,9 @@ export const usageLogs = pgTable('usage_logs', {
     errorCode?: string;
     features?: string[];
     ipAddress?: string;
+    // True when the stream aborted before completion (user disconnect, network error).
+    // Tokens reflect what was already consumed from the gateway, not the full response.
+    partial?: boolean;
     userAgent?: string;
   }>(),
 
