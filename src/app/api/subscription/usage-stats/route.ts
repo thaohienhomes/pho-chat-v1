@@ -10,64 +10,13 @@
  * to avoid displaying different plans in different parts of the UI.
  */
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
 import { GLOBAL_PLANS, VN_PLANS } from '@/config/pricing';
 import { users } from '@/database/schemas';
-import { subscriptions } from '@/database/schemas/billing';
 import { getServerDB } from '@/database/server';
-
-// Constants for plan prioritization (same as in /api/subscription/current)
-const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl_starter']);
-const LIFETIME_KEYWORDS = ['lifetime', 'founding'];
-
-/**
- * Get the user's effective plan ID by checking subscriptions table first
- * This ensures consistency with /api/subscription/current (BillingInfo)
- */
-async function getEffectivePlanId(
-  db: ReturnType<typeof getServerDB> extends Promise<infer T> ? T : never,
-  userId: string,
-  fallbackPlanId: string,
-): Promise<string> {
-  // Get ALL active subscriptions for the user (to properly prioritize)
-  const activeSubscriptions = await db
-    .select({
-      currentPeriodStart: subscriptions.currentPeriodStart,
-      planId: subscriptions.planId,
-    })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active')));
-
-  if (!activeSubscriptions || activeSubscriptions.length === 0) {
-    // No active subscription in subscriptions table, use fallback from users table
-    return fallbackPlanId;
-  }
-
-  // Prioritize paid/lifetime plans over free plan (same logic as /api/subscription/current)
-  const sortedSubscriptions = activeSubscriptions.sort((a, b) => {
-    const aIsLifetime = LIFETIME_KEYWORDS.some((kw) => a.planId.toLowerCase().includes(kw));
-    const bIsLifetime = LIFETIME_KEYWORDS.some((kw) => b.planId.toLowerCase().includes(kw));
-    const aIsFree = FREE_PLAN_IDS.has(a.planId.toLowerCase());
-    const bIsFree = FREE_PLAN_IDS.has(b.planId.toLowerCase());
-
-    // Lifetime plans have highest priority
-    if (aIsLifetime && !bIsLifetime) return -1;
-    if (!aIsLifetime && bIsLifetime) return 1;
-
-    // Free plans have lowest priority
-    if (aIsFree && !bIsFree) return 1;
-    if (!aIsFree && bIsFree) return -1;
-
-    // For same priority, prefer more recent subscription
-    const aStart = a.currentPeriodStart ? new Date(a.currentPeriodStart).getTime() : 0;
-    const bStart = b.currentPeriodStart ? new Date(b.currentPeriodStart).getTime() : 0;
-    return bStart - aStart;
-  });
-
-  return sortedSubscriptions[0].planId;
-}
+import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
 export async function GET() {
   try {
@@ -101,27 +50,10 @@ export async function GET() {
 
     const user = userResult[0];
 
-    // Get effective plan ID - prioritizes subscriptions table for consistency with BillingInfo
-    const fallbackPlanId = user.currentPlanId || 'vn_free';
-    let planId = await getEffectivePlanId(db, userId, fallbackPlanId);
-
-    // Override with Clerk publicMetadata.planId if DB plan resolves to free-tier
-    // This handles promo-activated users who have planId in Clerk but no DB subscription
-    const resolvedPlan = VN_PLANS[planId] || GLOBAL_PLANS[planId];
-    const isFreeOrMissing = !resolvedPlan || resolvedPlan.monthlyPoints <= 50_000;
-    if (isFreeOrMissing) {
-      const { clerkClient } = await import('@clerk/nextjs/server');
-      try {
-        const client = await clerkClient();
-        const clerkUser = await client.users.getUser(userId);
-        const clerkPlanId = (clerkUser.publicMetadata as any)?.planId;
-        if (clerkPlanId && clerkPlanId !== 'free' && clerkPlanId !== 'vn_free') {
-          planId = clerkPlanId;
-        }
-      } catch {
-        // Clerk lookup failed, continue with DB planId
-      }
-    }
+    // PHO-241/A1.6: DB is the single source of truth. Helper applies the same
+    // prioritization (lifetime > paid > free, recency tiebreaker) used by
+    // /api/subscription/current — keeping this endpoint consistent with BillingInfo.
+    const planId = await getUserPlanIdFromDB(userId);
 
     // Get plan config
     const plan = VN_PLANS[planId] || GLOBAL_PLANS[planId] || VN_PLANS.vn_free;
@@ -136,9 +68,8 @@ export async function GET() {
 
     // Adjust balance for plan upgrades where DB hasn't been updated yet
     const dbBalance = user.phoPointsBalance ?? 50_000;
-    const adjustedBalance = (dbBalance <= 50_000 && plan.monthlyPoints > 50_000)
-      ? plan.monthlyPoints
-      : dbBalance;
+    const adjustedBalance =
+      dbBalance <= 50_000 && plan.monthlyPoints > 50_000 ? plan.monthlyPoints : dbBalance;
 
     return NextResponse.json({
       currentPlanId: planId,

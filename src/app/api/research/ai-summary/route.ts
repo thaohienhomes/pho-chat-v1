@@ -11,6 +11,7 @@ import {
   processModelUsage,
 } from '@/server/services/billing/credits';
 import { phoGatewayService } from '@/server/services/phoGateway';
+import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
 export const maxDuration = 300;
 
@@ -26,22 +27,6 @@ const MODEL_PROVIDER_HINTS: Record<string, string> = {
   'gpt-4o': 'openai',
   'gpt-4o-mini': 'openai',
 };
-
-/** Resolve plan ID with Clerk metadata fallback for promo-activated users */
-async function resolvePlanId(userId: string, dbPlanId: string): Promise<string> {
-  const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl_starter']);
-  if (!FREE_PLAN_IDS.has(dbPlanId.toLowerCase())) return dbPlanId;
-  try {
-    const { clerkClient } = await import('@clerk/nextjs/server');
-    const client = await clerkClient();
-    const clerkUser = await client.users.getUser(userId);
-    const clerkPlanId = (clerkUser.publicMetadata as any)?.planId;
-    if (clerkPlanId && !FREE_PLAN_IDS.has(clerkPlanId.toLowerCase())) return clerkPlanId;
-  } catch {
-    // Clerk lookup failed, continue with DB planId
-  }
-  return dbPlanId;
-}
 
 /** Token estimation: byte length / 3 (balanced for multilingual BPE) */
 function countTokens(text: string): number {
@@ -96,8 +81,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const dbPlanId = creditStatus?.currentPlanId || 'vn_free';
-  const userPlanId = await resolvePlanId(userId, dbPlanId);
+  // PHO-241/A1.6: DB is the single source of truth. Never fall back to Clerk metadata.
+  const userPlanId = await getUserPlanIdFromDB(userId);
   const modelTier = getModelTier(model);
 
   const tierAccess = await checkTierAccess(userId, modelTier, userPlanId);

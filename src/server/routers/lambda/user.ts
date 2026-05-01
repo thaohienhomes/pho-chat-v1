@@ -1,5 +1,4 @@
 import { UserJSON } from '@clerk/backend';
-import { and, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
@@ -8,7 +7,6 @@ import { isDesktop } from '@/const/version';
 import { MessageModel } from '@/database/models/message';
 import { SessionModel } from '@/database/models/session';
 import { UserModel, UserNotFoundError } from '@/database/models/user';
-import { subscriptions } from '@/database/schemas/billing';
 import { ClerkAuth } from '@/libs/clerk-auth';
 import { pino } from '@/libs/logger';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
@@ -17,6 +15,7 @@ import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { S3 } from '@/server/modules/S3';
 import { FileService } from '@/server/services/file';
 import { NextAuthUserService } from '@/server/services/nextAuthUser';
+import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { UserService } from '@/server/services/user';
 import {
   NextAuthAccountSchame,
@@ -25,10 +24,6 @@ import {
   UserPreference,
 } from '@/types/user';
 import { UserSettings } from '@/types/user/settings';
-
-// Constants for plan prioritization (consistent with /api/subscription/current)
-const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl_starter']);
-const LIFETIME_KEYWORDS = ['lifetime', 'founding'];
 
 const userProcedure = authedProcedure.use(serverDatabase).use(async ({ ctx, next }) => {
   return next({
@@ -109,59 +104,20 @@ export const userRouter = router({
     const hasAnyMessages = await messageModel.hasMoreThanN(0);
     const hasExtraSession = await sessionModel.hasMoreThanN(1);
 
-    // Get effective plan from subscriptions table (same logic as /api/subscription/current)
-    // This ensures consistency between sidebar plan badge and BillingInfo
+    // PHO-241/A1.6: DB is the single source of truth for the effective plan.
+    // The helper applies the same prioritization (lifetime > paid > free,
+    // recency tiebreaker) that /api/subscription/current uses. Clerk
+    // publicMetadata is intentionally NOT consulted — it is display cache
+    // only and was previously a privilege-escalation surface.
     let effectivePlanId = state.currentPlanId || 'vn_free';
-
     try {
-      const activeSubscriptions = await ctx.serverDB
-        .select({
-          currentPeriodStart: subscriptions.currentPeriodStart,
-          planId: subscriptions.planId,
-        })
-        .from(subscriptions)
-        .where(and(eq(subscriptions.userId, ctx.userId), eq(subscriptions.status, 'active')));
-
-      if (activeSubscriptions && activeSubscriptions.length > 0) {
-        // Prioritize paid/lifetime plans over free plan
-        const sortedSubscriptions = activeSubscriptions.sort((a, b) => {
-          const aIsLifetime = LIFETIME_KEYWORDS.some((kw) => a.planId.toLowerCase().includes(kw));
-          const bIsLifetime = LIFETIME_KEYWORDS.some((kw) => b.planId.toLowerCase().includes(kw));
-          const aIsFree = FREE_PLAN_IDS.has(a.planId.toLowerCase());
-          const bIsFree = FREE_PLAN_IDS.has(b.planId.toLowerCase());
-
-          // Lifetime plans have highest priority
-          if (aIsLifetime && !bIsLifetime) return -1;
-          if (!aIsLifetime && bIsLifetime) return 1;
-
-          // Free plans have lowest priority
-          if (aIsFree && !bIsFree) return 1;
-          if (!aIsFree && bIsFree) return -1;
-
-          // For same priority, prefer more recent subscription
-          const aStart = a.currentPeriodStart ? new Date(a.currentPeriodStart).getTime() : 0;
-          const bStart = b.currentPeriodStart ? new Date(b.currentPeriodStart).getTime() : 0;
-          return bStart - aStart;
-        });
-
-        effectivePlanId = sortedSubscriptions[0].planId;
-      }
+      const planResult = await getUserPlanFromDB(ctx.userId);
+      effectivePlanId = planResult.planId;
     } catch (error) {
-      // If subscription query fails, fall back to users.currentPlanId
-      pino.warn({ error, userId: ctx.userId }, 'Failed to get effective plan from subscriptions');
-    }
-
-    // Tertiary fallback: check Clerk publicMetadata.planId for promo-activated users
-    if (FREE_PLAN_IDS.has(effectivePlanId.toLowerCase())) {
-      try {
-        const clerkUser = await ctx.clerkAuth.getCurrentUser();
-        const clerkPlanId = (clerkUser?.publicMetadata as any)?.planId;
-        if (clerkPlanId && !FREE_PLAN_IDS.has(clerkPlanId.toLowerCase())) {
-          effectivePlanId = clerkPlanId;
-        }
-      } catch {
-        // Clerk lookup failed, continue with current planId
-      }
+      pino.warn(
+        { error, userId: ctx.userId },
+        'getUserPlanFromDB failed; using users.currentPlanId',
+      );
     }
 
     // Return the actual DB balance — no auto-adjustment.
@@ -219,8 +175,6 @@ export const userRouter = router({
       return ctx.userModel.updateRecommendationSelections(input);
     }),
 
-
-
   unlinkSSOProvider: userProcedure.input(NextAuthAccountSchame).mutation(async ({ ctx, input }) => {
     const { provider, providerAccountId } = input;
     const account = await ctx.nextAuthUserService.getAccount(providerAccountId, provider);
@@ -228,7 +182,6 @@ export const userRouter = router({
     if (!account || account.userId !== ctx.userId) throw new Error('The account does not exist');
     await ctx.nextAuthUserService.unlinkAccount({ provider, providerAccountId });
   }),
-
 
   // 服务端上传头像
   updateAvatar: userProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
@@ -285,11 +238,9 @@ export const userRouter = router({
     return ctx.userModel.updateUser({ avatar: input });
   }),
 
-
   updateGuide: userProcedure.input(UserGuideSchema).mutation(async ({ ctx, input }) => {
     return ctx.userModel.updateGuide(input);
   }),
-
 
   updatePreference: userProcedure.input(z.any()).mutation(async ({ ctx, input }) => {
     return ctx.userModel.updatePreference(input);

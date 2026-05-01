@@ -4,12 +4,19 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { subscriptions, users } from '@/database/schemas';
 import { getServerDB } from '@/database/server';
+import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
 /**
  * Promo Code Activation API
  *
  * Validates a promo code and activates the corresponding plan.
- * Performs full 3-layer sync: Clerk metadata + users table + subscriptions table.
+ *
+ * PHO-241/A1.6: The DB write (users + subscriptions) is now AUTHORITATIVE.
+ * The Clerk metadata write is best-effort and exists only to keep the
+ * client-side display cache in sync — it must never gate authorization.
+ * If the Clerk write fails after DB succeeds, we log a warning but still
+ * return success to the user; a reconciliation cron resyncs Clerk later.
+ *
  * Also sends a welcome email on successful activation.
  *
  * Currently supports:
@@ -18,9 +25,9 @@ import { getServerDB } from '@/database/server';
 
 // Plan-specific configuration for promo activations
 const PLAN_CONFIGS: Record<string, { billingCycle: 'yearly' | 'lifetime'; monthlyPoints: number }> =
-{
-  medical_beta: { billingCycle: 'yearly', monthlyPoints: 1_000_000 },
-};
+  {
+    medical_beta: { billingCycle: 'yearly', monthlyPoints: 1_000_000 },
+  };
 
 // Valid promo codes — in production, move to DB or env var
 const VALID_PROMO_CODES: Record<
@@ -94,12 +101,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if user already has this plan activated
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const currentPlanId = (user.publicMetadata as Record<string, unknown>)?.planId;
-
-    if (currentPlanId === promoConfig.planId) {
+    // PHO-241/A1.6: DB is the single source of truth — read it (NOT Clerk metadata)
+    // when checking whether the plan is already active.
+    const existingPlan = await getUserPlanFromDB(userId);
+    if (existingPlan.planId === promoConfig.planId) {
       return NextResponse.json(
         {
           error: 'Bạn đã kích hoạt gói này rồi!',
@@ -116,70 +121,42 @@ export async function POST(request: NextRequest) {
     };
 
     // =============================================
-    // STEP 1: Update Clerk publicMetadata
+    // STEP 1 (AUTHORITATIVE): Sync database — users + subscriptions tables.
+    // Must succeed before we touch Clerk; if this fails we abort.
     // =============================================
-    await client.users.updateUserMetadata(userId, {
-      publicMetadata: {
-        ...user.publicMetadata,
-        planId,
-        previousPlanId: currentPlanId || 'vn_free',
-        promoActivatedAt: new Date().toISOString(),
-        promoCode: normalizedCode,
-        ...(planId === 'medical_beta' ? { medical_beta: true } : {}),
-      },
-    });
-    console.log('✅ [Promo] Clerk metadata updated for user:', userId);
+    const db = await getServerDB();
 
-    // =============================================
-    // STEP 2: Sync database (users + subscriptions)
-    // =============================================
-    try {
-      const db = await getServerDB();
-
-      // 2a. Update users table: currentPlanId, phoPointsBalance, pointsResetDate, subscriptionStatus
-      const pointsResetDate = getEndOfMonth();
-      await db
-        .update(users)
-        .set({
-          currentPlanId: planId,
-          phoPointsBalance: planConfig.monthlyPoints,
-          pointsResetDate,
-          subscriptionStatus: 'ACTIVE',
-        })
-        .where(eq(users.id, userId));
-      console.log('✅ [Promo] users table synced:', {
+    // 1a. Update users table: currentPlanId, phoPointsBalance, pointsResetDate, subscriptionStatus
+    const pointsResetDate = getEndOfMonth();
+    await db
+      .update(users)
+      .set({
         currentPlanId: planId,
         phoPointsBalance: planConfig.monthlyPoints,
-      });
+        pointsResetDate,
+        subscriptionStatus: 'ACTIVE',
+      })
+      .where(eq(users.id, userId));
+    console.log('✅ [Promo] users table synced:', {
+      currentPlanId: planId,
+      phoPointsBalance: planConfig.monthlyPoints,
+    });
 
-      // 2b. Create or update subscription record
-      const start = new Date();
-      const end = new Date(start);
-      end.setDate(end.getDate() + (planConfig.billingCycle === 'yearly' ? 365 : 30));
+    // 1b. Create or update subscription record
+    const start = new Date();
+    const end = new Date(start);
+    end.setDate(end.getDate() + (planConfig.billingCycle === 'yearly' ? 365 : 30));
 
-      const [existing] = await db
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.userId, userId))
-        .limit(1);
+    const [existing] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userId))
+      .limit(1);
 
-      if (existing) {
-        await db
-          .update(subscriptions)
-          .set({
-            billingCycle: planConfig.billingCycle,
-            cancelAtPeriodEnd: false,
-            currentPeriodEnd: end,
-            currentPeriodStart: start,
-            paymentProvider: 'promo',
-            planId,
-            status: 'active',
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptions.userId, userId));
-        console.log('✅ [Promo] Subscription updated for user:', userId);
-      } else {
-        await db.insert(subscriptions).values({
+    if (existing) {
+      await db
+        .update(subscriptions)
+        .set({
           billingCycle: planConfig.billingCycle,
           cancelAtPeriodEnd: false,
           currentPeriodEnd: end,
@@ -187,40 +164,81 @@ export async function POST(request: NextRequest) {
           paymentProvider: 'promo',
           planId,
           status: 'active',
-          userId,
-        });
-        console.log('✅ [Promo] Subscription created for user:', userId);
-      }
+          updatedAt: new Date(),
+        })
+        .where(eq(subscriptions.userId, userId));
+      console.log('✅ [Promo] Subscription updated for user:', userId);
+    } else {
+      await db.insert(subscriptions).values({
+        billingCycle: planConfig.billingCycle,
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: end,
+        currentPeriodStart: start,
+        paymentProvider: 'promo',
+        planId,
+        status: 'active',
+        userId,
+      });
+      console.log('✅ [Promo] Subscription created for user:', userId);
+    }
 
-      // 2c. Sync wallet tier
-      try {
-        const { syncWalletTier } = await import('@/libs/wallet/tierSync');
-        await syncWalletTier(db as any, userId, planId);
-        console.log('✅ [Promo] Wallet tier synced for user:', userId);
-      } catch (walletError) {
-        console.error('⚠️ [Promo] Wallet tier sync failed (non-critical):', walletError);
-      }
-    } catch (dbError) {
-      console.error('⚠️ [Promo] DB sync failed:', dbError);
-      // Clerk is already updated, so user will still see the plan via metadata fallback
+    // 1c. Sync wallet tier (non-critical)
+    try {
+      const { syncWalletTier } = await import('@/libs/wallet/tierSync');
+      await syncWalletTier(db as any, userId, planId);
+      console.log('✅ [Promo] Wallet tier synced for user:', userId);
+    } catch (walletError) {
+      console.error('⚠️ [Promo] Wallet tier sync failed (non-critical):', walletError);
     }
 
     // =============================================
-    // STEP 3: Send welcome email (non-blocking)
+    // STEP 2 (DISPLAY ONLY): Update Clerk publicMetadata so the client cache
+    // shows the new plan immediately. NOT authoritative — failure here does
+    // NOT roll back the DB write; a reconciliation cron will retry.
+    // We also reuse the Clerk user object for the welcome email below.
     // =============================================
+    const client = await clerkClient();
+    let clerkUser: Awaited<ReturnType<typeof client.users.getUser>> | undefined;
     try {
-      const userEmail = user.emailAddresses?.[0]?.emailAddress;
-      if (userEmail) {
-        const { sendWelcomeEmail } = await import('@/libs/email');
-        await sendWelcomeEmail({
-          email: userEmail,
-          name: user.firstName || userEmail.split('@')[0] || 'there',
+      clerkUser = await client.users.getUser(userId);
+      await client.users.updateUserMetadata(userId, {
+        publicMetadata: {
+          ...clerkUser.publicMetadata,
           planId,
-        });
-        console.log('✅ [Promo] Welcome email sent to:', userEmail);
+          previousPlanId: existingPlan.planId,
+          promoActivatedAt: new Date().toISOString(),
+          promoCode: normalizedCode,
+          ...(planId === 'medical_beta' ? { medical_beta: true } : {}),
+        },
+      });
+      console.log('✅ [Promo] Clerk metadata updated for user:', userId);
+    } catch (clerkError) {
+      console.warn(
+        '⚠️ [Promo] Clerk metadata sync failed — DB is authoritative, plan IS active. ' +
+          'Reconciliation cron will retry. userId=' +
+          userId,
+        clerkError,
+      );
+    }
+
+    // =============================================
+    // STEP 3: Send welcome email (non-blocking, requires Clerk user from STEP 2)
+    // =============================================
+    if (clerkUser) {
+      try {
+        const userEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
+        if (userEmail) {
+          const { sendWelcomeEmail } = await import('@/libs/email');
+          await sendWelcomeEmail({
+            email: userEmail,
+            name: clerkUser.firstName || userEmail.split('@')[0] || 'there',
+            planId,
+          });
+          console.log('✅ [Promo] Welcome email sent to:', userEmail);
+        }
+      } catch (emailError) {
+        console.error('⚠️ [Promo] Welcome email failed (non-critical):', emailError);
       }
-    } catch (emailError) {
-      console.error('⚠️ [Promo] Welcome email failed (non-critical):', emailError);
     }
 
     // Increment usage count
