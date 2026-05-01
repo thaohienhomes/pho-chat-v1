@@ -1,28 +1,24 @@
 /**
  * Subscription Model Access Service
- * 
+ *
  * Manages which AI models users can access based on their subscription plan.
  * Handles auto-enabling models when users subscribe to plans.
  */
-
 import {
   getAllowedModelsForPlan,
   getDefaultModelForPlan,
-  getRequiredProvidersForPlan
+  getRequiredProvidersForPlan,
 } from '@/config/pricing';
-import { serverDB } from '@/database/server';
 import { AiInfraRepos } from '@/database/repositories/aiInfra';
+import { serverDB } from '@/database/server';
 import { getServerGlobalConfig } from '@/server/globalConfig';
+import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { ProviderConfig } from '@/types/user/settings';
 
 export class SubscriptionModelAccessService {
   private async getAiInfraRepo(userId: string): Promise<AiInfraRepos> {
     const { aiProvider } = await getServerGlobalConfig();
-    return new AiInfraRepos(
-      serverDB,
-      userId,
-      aiProvider as Record<string, ProviderConfig>
-    );
+    return new AiInfraRepos(serverDB, userId, aiProvider as Record<string, ProviderConfig>);
   }
 
   /**
@@ -30,9 +26,7 @@ export class SubscriptionModelAccessService {
    */
   async getAllowedModelsForUser(userId: string): Promise<string[]> {
     try {
-      const subscription = await this.getCurrentUserSubscription(userId);
-      const planCode = subscription?.planId || 'vn_free';
-
+      const planCode = await this.getCurrentUserPlanCode(userId);
       return getAllowedModelsForPlan(planCode);
     } catch (error) {
       console.error('Error getting allowed models for user:', error);
@@ -59,9 +53,7 @@ export class SubscriptionModelAccessService {
    */
   async getDefaultModelForUser(userId: string): Promise<{ model: string; provider: string }> {
     try {
-      const subscription = await this.getCurrentUserSubscription(userId);
-      const planCode = subscription?.planId || 'vn_free';
-
+      const planCode = await this.getCurrentUserPlanCode(userId);
       return getDefaultModelForPlan(planCode);
     } catch (error) {
       console.error('Error getting default model for user:', error);
@@ -102,57 +94,26 @@ export class SubscriptionModelAccessService {
   }
 
   /**
-   * Get current user subscription from database
+   * Get current user's plan code from the database.
+   *
+   * PHO-241/A1.6: This used to fall back to Clerk publicMetadata.planId for
+   * "promo-activated" users, which made Clerk a writable source-of-truth for
+   * paid-plan authorization. We now read exclusively from the DB; promo
+   * activations write to both `users.current_plan_id` and the `subscriptions`
+   * table (see /api/promo/activate), so DB-only is correct.
    */
-  private async getCurrentUserSubscription(userId: string) {
-    try {
-      // Use existing subscription API endpoint
-      const { serverDB } = await import('@/database/server');
-      const { subscriptions } = await import('@/database/schemas/billing');
-      const { eq, and } = await import('drizzle-orm');
-
-      const db = await serverDB;
-      const currentSubscription = await db
-        .select()
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.userId, userId),
-            eq(subscriptions.status, 'active'),
-          ),
-        )
-        .limit(1);
-
-      if (currentSubscription && currentSubscription.length > 0) {
-        return currentSubscription[0];
-      }
-
-      // Clerk metadata fallback for promo-activated users
-      const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl_starter']);
-      try {
-        const { clerkClient } = await import('@clerk/nextjs/server');
-        const client = await clerkClient();
-        const clerkUser = await client.users.getUser(userId);
-        const clerkPlanId = (clerkUser.publicMetadata as any)?.planId;
-        if (clerkPlanId && !FREE_PLAN_IDS.has(clerkPlanId.toLowerCase())) {
-          // Return synthetic subscription for promo plans
-          return { planId: clerkPlanId, status: 'active' } as any;
-        }
-      } catch {
-        // Clerk lookup failed
-      }
-
-      return null; // No active subscription, default to free plan
-    } catch (error) {
-      console.error('Error fetching user subscription:', error);
-      return null; // Fallback to free plan
-    }
+  private async getCurrentUserPlanCode(userId: string): Promise<string> {
+    const result = await getUserPlanFromDB(userId);
+    return result.planId;
   }
 
   /**
    * Enable providers for user
    */
-  private async enableProvidersForUser(aiInfraRepo: AiInfraRepos, providers: string[]): Promise<void> {
+  private async enableProvidersForUser(
+    aiInfraRepo: AiInfraRepos,
+    providers: string[],
+  ): Promise<void> {
     for (const providerId of providers) {
       try {
         // Enable the provider
@@ -198,68 +159,39 @@ export class SubscriptionModelAccessService {
    */
   private getModelProviderMap(): Record<string, string> {
     return {
-
-
       'claude-3-5-sonnet': 'anthropic',
-
 
       // Anthropic models
       'claude-3-haiku': 'anthropic',
 
-
       'claude-3-opus': 'anthropic',
 
-
       'claude-3-sonnet': 'anthropic',
-
 
       // Other models
       'deepseek-chat': 'deepseek',
 
-
-
       'deepseek-reasoner': 'deepseek',
-
-
 
       // Google models
       'gemini-1.5-flash': 'google',
 
-
-
-
-
       'gemini-1.5-pro': 'google',
-
-
 
       'gemini-2.0-flash': 'google',
 
-
-
       'gemini-2.5-pro': 'google',
-
-
 
       'gpt-4-turbo': 'openai',
 
-
-
-
-
       'gpt-4.1': 'openai',
 
-
-
-
       'gpt-4o': 'openai',
-
 
       // OpenAI models
       'gpt-4o-mini': 'openai',
 
       'o1': 'openai',
-
 
       'o1-pro': 'openai',
       'o3': 'openai',

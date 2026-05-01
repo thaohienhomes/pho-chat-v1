@@ -4,14 +4,12 @@
  *
  * GET /api/subscription/models/allowed - Get allowed models for current user
  */
-import { auth, clerkClient } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 import { PLAN_MODEL_ACCESS, getAllowedTiersForPlan } from '@/config/pricing';
-import { subscriptions } from '@/database/schemas/billing';
-import { serverDB } from '@/database/server';
 import { pino } from '@/libs/logger';
+import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { subscriptionModelAccessService } from '@/services/subscription/modelAccess';
 
 /**
@@ -88,46 +86,14 @@ export async function GET(): Promise<NextResponse<AllowedModelsResponse>> {
       'Fetching allowed models for user',
     );
 
-    // Fetch allowed models, default model, and subscriptions in parallel
-    const db = await serverDB;
-    const [allowedModels, defaultModel, allSubscriptions] = await Promise.all([
+    // PHO-241/A1.6: DB is the single source of truth. Helper applies the same
+    // prioritization (lifetime > paid > free, recency tiebreaker) used by
+    // /api/subscription/current and the user.ts trpc router.
+    const [allowedModels, defaultModel, planCode] = await Promise.all([
       subscriptionModelAccessService.getAllowedModelsForUser(userId),
       subscriptionModelAccessService.getDefaultModelForUser(userId),
-      db
-        .select()
-        .from(subscriptions)
-        .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))),
+      getUserPlanIdFromDB(userId),
     ]);
-
-    // Prioritize paid plans over free plan
-    const freePlans = new Set(['free', 'trial']);
-    const sortedSubscriptions = allSubscriptions.sort((a, b) => {
-      const aIsFree = freePlans.has(a.planId?.toLowerCase() || '');
-      const bIsFree = freePlans.has(b.planId?.toLowerCase() || '');
-      if (aIsFree && !bIsFree) return 1;
-      if (!aIsFree && bIsFree) return -1;
-      // For same priority, prefer most recent
-      const aStart = a.currentPeriodStart ? new Date(a.currentPeriodStart).getTime() : 0;
-      const bStart = b.currentPeriodStart ? new Date(b.currentPeriodStart).getTime() : 0;
-      return bStart - aStart;
-    });
-
-    let planCode = sortedSubscriptions[0]?.planId || 'vn_free';
-
-    // Clerk metadata fallback for promo-activated users (same pattern as user.ts)
-    const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl_starter']);
-    if (FREE_PLAN_IDS.has(planCode.toLowerCase())) {
-      try {
-        const client = await clerkClient();
-        const clerkUser = await client.users.getUser(userId);
-        const clerkPlanId = (clerkUser.publicMetadata as any)?.planId;
-        if (clerkPlanId && !FREE_PLAN_IDS.has(clerkPlanId.toLowerCase())) {
-          planCode = clerkPlanId;
-        }
-      } catch {
-        // Clerk lookup failed, continue with DB planCode
-      }
-    }
 
     // Get plan details
     const planAccess = PLAN_MODEL_ACCESS[planCode];
