@@ -94,13 +94,13 @@ export class SubscriptionModelAccessService {
   }
 
   /**
-   * Get current user's plan code from the database.
+   * Get current user's plan code from the canonical helper.
    *
-   * PHO-241/A1.6: This used to fall back to Clerk publicMetadata.planId for
-   * "promo-activated" users, which made Clerk a writable source-of-truth for
-   * paid-plan authorization. We now read exclusively from the DB; promo
-   * activations write to both `users.current_plan_id` and the `subscriptions`
-   * table (see /api/promo/activate), so DB-only is correct.
+   * PHO-241/A1.6: This used to fall back to Clerk publicMetadata.planId
+   * inline, which made Clerk a writable source-of-truth for paid-plan
+   * authorization. We now go through `getUserPlanFromDB`, which prefers
+   * the DB and (in soft enforcement mode) honors a Clerk paid plan only
+   * with a logged drift warning. See helper docstring for the migration plan.
    */
   private async getCurrentUserPlanCode(userId: string): Promise<string> {
     const result = await getUserPlanFromDB(userId);

@@ -1,26 +1,37 @@
 /**
- * Canonical user-plan lookup — DB is the single source of truth.
+ * Canonical user-plan lookup — DB is the long-term source of truth.
  *
  * Background (PHO-241 / A1.6):
- *   Prior to this helper, 8 server-side sites trusted Clerk
- *   `publicMetadata.planId` as a fallback when the DB returned a free-tier
- *   plan. That meant anyone with Clerk Dashboard access (admins, support, or
- *   a leaked CLERK_SECRET_KEY) could mint paid plans without leaving a DB
- *   row — and a real user (vuthanhhuong, PHO-233) silently received Tier 3
- *   for months because Clerk metadata diverged from the DB.
+ *   8 server-side sites trusted Clerk `publicMetadata.planId` as a fallback
+ *   when the DB returned a free-tier plan. That made Clerk a writable
+ *   source-of-truth for paid-plan authorization — anyone with Clerk
+ *   Dashboard access (admins, support, leaked CLERK_SECRET_KEY) could mint
+ *   paid plans without leaving a DB row. A real user (vuthanhhuong, PHO-233)
+ *   silently received Tier 3 for months because Clerk metadata diverged
+ *   from the DB.
  *
- * Rule:
- *   - DB is authoritative for paid-plan checks.
- *   - Clerk publicMetadata.planId is display cache only; never trust it for
- *     authorization decisions.
+ * Enforcement mode (env: `PLAN_ENFORCEMENT_MODE`):
+ *   - `soft` (default) — read DB first; if DB returns a free plan AND Clerk
+ *     metadata says paid, log a `[plan-drift] SOFT MODE` warning and HONOR
+ *     the Clerk plan. This is a graceful migration mode: it eliminates the
+ *     break-risk of revoking paid access from users whose DB row never got
+ *     synced, while still surfacing every drift case in logs so we can
+ *     reconcile and flip to hard later.
+ *   - `hard` — DB only. Clerk metadata is ignored entirely. Use after the
+ *     drift backlog has been reconciled.
  *
- * Read order:
+ *   Set `PLAN_ENFORCEMENT_MODE=hard` in Vercel project env to enable hard
+ *   enforcement. Any other value (including unset) falls back to soft mode
+ *   for safety.
+ *
+ * Read order (DB):
  *   1. Active row in `subscriptions` (status='active'), sorted lifetime > paid > free,
  *      with most recent `currentPeriodStart` as tiebreaker — same prioritization the
  *      existing /api/subscription/current endpoint uses.
  *   2. `users.current_plan_id` (legacy / admin-set baseline).
  *   3. `'vn_free'` default.
  */
+import { clerkClient } from '@clerk/nextjs/server';
 import { and, eq } from 'drizzle-orm';
 
 import { users } from '@/database/schemas';
@@ -33,9 +44,18 @@ export const FREE_PLAN_IDS = new Set(['free', 'trial', 'starter', 'vn_free', 'gl
 /** Substrings in `planId` that mark a lifetime/founding plan (highest priority). */
 export const LIFETIME_KEYWORDS = ['lifetime', 'founding'];
 
-export type UserPlanSource = 'db_subscription' | 'db_user_default' | 'fallback_free';
+export type UserPlanSource =
+  | 'clerk_fallback_soft'
+  | 'db_subscription'
+  | 'db_user_default'
+  | 'fallback_free';
 
 export interface UserPlanResult {
+  /**
+   * True iff DB and Clerk disagree (DB returned free, Clerk had a paid plan).
+   * Only set when the resolved plan came from `clerk_fallback_soft`.
+   */
+  driftDetected?: boolean;
   /** True iff resolved from an active row in the `subscriptions` table. */
   hasActiveSubscription: boolean;
   /** Resolved plan ID — `vn_free` when no record exists. */
@@ -45,7 +65,8 @@ export interface UserPlanResult {
 }
 
 /**
- * Resolve a user's plan strictly from the database. Never consults Clerk.
+ * Resolve a user's plan, preferring the DB but optionally honoring Clerk
+ * metadata as a soft fallback (see file-level docstring).
  *
  * Use this for any authorization decision (tier access, model gating,
  * point allocation, etc). For display-only client reads (e.g. show a "PRO"
@@ -54,6 +75,9 @@ export interface UserPlanResult {
  */
 export async function getUserPlanFromDB(userId: string): Promise<UserPlanResult> {
   const db = await getServerDB();
+
+  // ── 1. Resolve the DB result first ─────────────────────────────────
+  let dbResult: UserPlanResult;
 
   const activeSubs = await db
     .select({
@@ -82,32 +106,69 @@ export async function getUserPlanFromDB(userId: string): Promise<UserPlanResult>
       return bStart - aStart;
     });
 
-    return {
+    dbResult = {
       hasActiveSubscription: true,
       planId: sorted[0].planId,
       source: 'db_subscription',
     };
+  } else {
+    const [user] = await db
+      .select({ planId: users.currentPlanId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    dbResult = user?.planId
+      ? {
+          hasActiveSubscription: false,
+          planId: user.planId,
+          source: 'db_user_default',
+        }
+      : {
+          hasActiveSubscription: false,
+          planId: 'vn_free',
+          source: 'fallback_free',
+        };
   }
 
-  const [user] = await db
-    .select({ planId: users.currentPlanId })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  // ── 2. Soft enforcement: honor Clerk paid plan if DB has free plan ─
+  // Only when (a) mode is soft AND (b) DB result is a free-tier plan.
+  // If DB already shows a paid plan, we trust it without any Clerk read.
+  const enforcementMode = (process.env.PLAN_ENFORCEMENT_MODE ?? 'soft').toLowerCase();
+  const dbIsFree = FREE_PLAN_IDS.has(dbResult.planId.toLowerCase());
 
-  if (user?.planId) {
-    return {
-      hasActiveSubscription: false,
-      planId: user.planId,
-      source: 'db_user_default',
-    };
+  if (enforcementMode !== 'hard' && dbIsFree) {
+    try {
+      const client = await clerkClient();
+      const clerkUser = await client.users.getUser(userId);
+      const rawClerkPlan = (clerkUser.publicMetadata as Record<string, unknown> | undefined)
+        ?.planId;
+
+      if (
+        typeof rawClerkPlan === 'string' &&
+        rawClerkPlan &&
+        !FREE_PLAN_IDS.has(rawClerkPlan.toLowerCase())
+      ) {
+        const email = clerkUser.emailAddresses?.[0]?.emailAddress ?? '(no email)';
+        console.warn(
+          `[plan-drift] SOFT MODE: User ${userId} (${email}) — DB=${dbResult.planId}, ` +
+            `Clerk=${rawClerkPlan}. Honoring Clerk plan. Migrate DB to fix.`,
+        );
+        return {
+          driftDetected: true,
+          hasActiveSubscription: false,
+          planId: rawClerkPlan,
+          source: 'clerk_fallback_soft',
+        };
+      }
+    } catch (err) {
+      // Clerk lookup failed (network, auth, etc) — fall through to DB result.
+      // We do NOT crash the request: the DB result is always a safe baseline.
+      console.warn(`[plan-drift] Clerk lookup failed for ${userId}:`, err);
+    }
   }
 
-  return {
-    hasActiveSubscription: false,
-    planId: 'vn_free',
-    source: 'fallback_free',
-  };
+  return dbResult;
 }
 
 /** Convenience wrapper for callers that only need the planId string. */

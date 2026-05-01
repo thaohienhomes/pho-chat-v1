@@ -137,3 +137,4 @@ scripts/add-missing-issues.js
 scripts/setup-linear.js
 
 .vercel
+.env*.local
