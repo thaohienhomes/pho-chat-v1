@@ -62,7 +62,17 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
               if (shouldForceReauth()) {
                 forceReauth();
               }
-            }
+            } else if (status === 401 && retried && // PHO-252: second 401 after a successful client-side refresh.
+              // The fresh JWT didn't satisfy the server (Clerk session
+              // server-side dead, instance/kid mismatch, kid rotation lag
+              // between client and edge). Without counting this, the link
+              // bubbled the error to errorHandlingLink which only captures
+              // the PostHog event — forceReauth() never fired, leaving the
+              // user permanently broken across many sessions. Counting it
+              // here lets shouldForceReauth() escalate after the threshold.
+              shouldForceReauth()) {
+                forceReauth();
+              }
             observer.error(err);
           },
           next: (value) => observer.next(value),
