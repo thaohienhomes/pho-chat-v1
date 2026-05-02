@@ -3,6 +3,7 @@ import { StateCreator } from 'zustand/vanilla';
 
 import { notification } from '@/components/AntdStaticMethods';
 import { FILE_UPLOAD_BLACKLIST } from '@/const/file';
+import { silentRefresh } from '@/libs/trpc/client/authRecovery';
 import { fileService } from '@/services/file';
 import { ServerService } from '@/services/file/server';
 import { ragService } from '@/services/rag';
@@ -117,6 +118,16 @@ export const createFileSlice: StateCreator<
     );
 
     dispatchChatUploadFileList({ files: uploadFiles, type: 'addFiles' });
+
+    // PHO-251: proactively touch the Clerk session before the upload-related
+    // tRPC mutations fire. If the user idled long enough for the __session
+    // cookie to go stale (~5 min), this refreshes it now so the very first
+    // checkFileHash / createS3PreSignedUrl / createFile call lands with a fresh
+    // JWT instead of 401 → retryOnUnauthorizedLink → silent recovery → re-issue.
+    // Singleflight inside authRecovery makes back-to-back uploads share one
+    // Clerk touch (~150ms). The retry link is still the safety net for race
+    // conditions and slow regions; this is a no-op when the session is fresh.
+    await silentRefresh();
 
     // upload files and process it
     const pools = files.map(async (file) => {

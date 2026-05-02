@@ -13,7 +13,14 @@ let recentFailures: number[] = [];
 let lastCaptureAt = 0;
 let reauthScheduled = false;
 
-const FAILURE_WINDOW_MS = 30_000;
+// PHO-251: a single user reported 5 auth_session_expired events over 34 min on
+// /chat (avg ~7 min apart) followed by a TRPCClientError UNAUTHORIZED on file
+// upload. Each failure was outside the previous 30s window, so the threshold
+// never tripped and the user was left silently broken across many sessions.
+// Widened to 15 min so 2 unrecoverable 401s anywhere in that range escalates
+// to a hard re-auth (toast + redirect to /login). Burst storms (8 events in
+// ~15 ms during inbox load) still trip on the 2nd event as before.
+const FAILURE_WINDOW_MS = 15 * 60_000;
 const FAILURE_THRESHOLD = 2;
 const CAPTURE_THROTTLE_MS = 30_000;
 const REAUTH_TOAST_DELAY_MS = 1500;
