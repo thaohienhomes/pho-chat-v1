@@ -35,14 +35,27 @@ const retryOnUnauthorizedLink: TRPCLink<ToolsRouter> = () => {
                 return;
               }
 
-              // Poll useUserStore for Clerk auth readiness (extended for VN CDN).
+              // Poll useUserStore for Clerk auth readiness. PHO-259: cap at 2s —
+              // silentRefresh typically resolves <1s, so a generous 2s wins back
+              // the unrecoverable user-facing latency the previous 5s wait was
+              // burning on every 401. Past 2s the recovery is treated as failed
+              // and shouldForceReauth() escalates on the next failure. The
+              // `settled` guard stops the recursive poll from running as a
+              // zombie timer after the safety cap fires.
               await new Promise<void>((resolve) => {
+                let settled = false;
+                const finish = () => {
+                  if (settled) return;
+                  settled = true;
+                  resolve();
+                };
                 const check = () => {
-                  if (useUserStore.getState().isLoaded) return resolve();
-                  setTimeout(check, 200);
+                  if (settled) return;
+                  if (useUserStore.getState().isLoaded) return finish();
+                  setTimeout(check, 100);
                 };
                 check();
-                setTimeout(resolve, 5000);
+                setTimeout(finish, 2000);
               });
 
               // Singleflight refresh shared with lambda + edge clients.
@@ -57,12 +70,15 @@ const retryOnUnauthorizedLink: TRPCLink<ToolsRouter> = () => {
               if (shouldForceReauth()) {
                 forceReauth();
               }
-            } else if (status === 401 && retried && // PHO-252: second 401 after a successful client-side refresh.
+            } else if (
+              status === 401 &&
+              retried && // PHO-252: second 401 after a successful client-side refresh.
               // Server still rejects the fresh JWT — count it so
               // shouldForceReauth() can escalate.
-              shouldForceReauth()) {
-                forceReauth();
-              }
+              shouldForceReauth()
+            ) {
+              forceReauth();
+            }
             observer.error(err);
           },
           next: (value) => observer.next(value),
