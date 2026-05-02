@@ -9,6 +9,7 @@ import { SepayWebhookData, sepayGateway } from '@/libs/sepay';
 import { sendTikTokServerEvent } from '@/libs/tiktok-events-api';
 import { logWebhookEvent } from '@/libs/webhookLogger';
 import { getPaymentByOrderId } from '@/server/services/billing/sepay';
+import { timingSafeCompareStrings } from '@/utils/timingSafeCompare';
 
 /**
  * GET endpoint to test webhook accessibility
@@ -506,7 +507,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (!providedSecret || providedSecret !== webhookSecret) {
+    // PHO-245 / A1.12: constant-time compare on the shared SePay secret.
+    // `timingSafeCompareStrings` returns false on missing/different-length
+    // inputs, so it also subsumes the previous `!providedSecret` guard.
+    if (!providedSecret || !timingSafeCompareStrings(providedSecret, webhookSecret)) {
       console.error('❌ Unauthorized webhook request - invalid or missing secret token');
       console.error('❌ Provided secret:', providedSecret ? '[REDACTED]' : 'NONE');
       console.error(

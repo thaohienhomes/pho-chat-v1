@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { createHmac } from 'node:crypto';
 
 import { authEnv } from '@/envs/auth';
+import { timingSafeCompareHex } from '@/utils/timingSafeCompare';
 
 export type LogtToUserEntity = {
   applicationId?: string;
@@ -32,7 +33,9 @@ export const validateRequest = async (request: Request, signingKey: string) => {
     const hmac = createHmac('sha256', signingKey);
     hmac.update(payloadString);
     const signature = hmac.digest('hex');
-    if (signature === logtoHeaderSignature) {
+    // PHO-245 / A1.12: constant-time compare on the HMAC-SHA256 hex digest
+    // prevents byte-by-byte timing attacks on the signature.
+    if (logtoHeaderSignature && timingSafeCompareHex(signature, logtoHeaderSignature)) {
       return JSON.parse(payloadString) as LogtoWebhookPayload;
     } else {
       console.warn(
