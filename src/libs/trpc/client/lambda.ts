@@ -38,15 +38,29 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
                 return;
               }
 
-              // Poll useUserStore for Clerk auth readiness (extended timeout for slow regions)
+              // Poll useUserStore for Clerk auth readiness. PHO-259: cap at 2s —
+              // silentRefresh typically resolves <1s, so a generous 2s wins back
+              // the 6s of unrecoverable user-facing latency the previous 8s wait
+              // was burning on every 401. Past 2s the recovery is treated as
+              // failed; shouldForceReauth() escalates on the next failure rather
+              // than keeping the user stuck. The `settled` guard stops the
+              // recursive poll from running as a zombie timer after the safety
+              // cap fires.
               await new Promise<void>((resolve) => {
+                let settled = false;
+                const finish = () => {
+                  if (settled) return;
+                  settled = true;
+                  resolve();
+                };
                 const check = () => {
+                  if (settled) return;
                   const s = useUserStore.getState();
-                  if (s.isLoaded) return resolve();
-                  setTimeout(check, 200);
+                  if (s.isLoaded) return finish();
+                  setTimeout(check, 100);
                 };
                 check();
-                setTimeout(resolve, 8000); // Max 8s wait (Clerk CDN slow in VN)
+                setTimeout(finish, 2000);
               });
 
               // Singleflight refresh — parallel 401s share one Clerk call.
@@ -62,7 +76,9 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
               if (shouldForceReauth()) {
                 forceReauth();
               }
-            } else if (status === 401 && retried && // PHO-252: second 401 after a successful client-side refresh.
+            } else if (
+              status === 401 &&
+              retried && // PHO-252: second 401 after a successful client-side refresh.
               // The fresh JWT didn't satisfy the server (Clerk session
               // server-side dead, instance/kid mismatch, kid rotation lag
               // between client and edge). Without counting this, the link
@@ -70,9 +86,10 @@ const retryOnUnauthorizedLink: TRPCLink<LambdaRouter> = () => {
               // the PostHog event — forceReauth() never fired, leaving the
               // user permanently broken across many sessions. Counting it
               // here lets shouldForceReauth() escalate after the threshold.
-              shouldForceReauth()) {
-                forceReauth();
-              }
+              shouldForceReauth()
+            ) {
+              forceReauth();
+            }
             observer.error(err);
           },
           next: (value) => observer.next(value),
