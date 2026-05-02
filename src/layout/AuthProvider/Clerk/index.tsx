@@ -57,12 +57,12 @@ const Clerk = memo(({ children }: PropsWithChildren) => {
   return (
     <ClerkErrorBoundary>
       <ClerkProvider
-        afterSignInUrl="/"
-        afterSignUpUrl="/"
         allowedRedirectOrigins={allowedRedirectOrigins}
         appearance={updatedAppearance}
         localization={localization}
+        signInFallbackRedirectUrl="/"
         signInUrl="/login"
+        signUpFallbackRedirectUrl="/"
         signUpUrl={!enableClerkSignUp ? '/login' : '/signup'} // Redirect sign-up to sign-in if disabled
       >
         {children}

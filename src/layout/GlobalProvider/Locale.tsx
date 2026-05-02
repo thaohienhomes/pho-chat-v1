@@ -11,13 +11,20 @@ import { getAntdLocale } from '@/utils/locale';
 
 import Editor from './Editor';
 
+// PHO-257: dayjs locale codes don't always match our BCP-47 lang tags.
+// Map regional variants to their dayjs equivalents (e.g. vi-VN → vi).
+// refs: https://github.com/lobehub/lobe-chat/issues/3396
+const DAYJS_LOCALE_MAP: Record<string, string> = {
+  'en-us': 'en',
+  'vi-vn': 'vi',
+};
+
 const updateDayjs = async (lang: string) => {
   // load default lang
   let dayJSLocale;
   try {
-    // dayjs locale is using `en` instead of `en-US`
-    // refs: https://github.com/lobehub/lobe-chat/issues/3396
-    const locale = lang!.toLowerCase() === 'en-us' ? 'en' : lang!.toLowerCase();
+    const normalized = lang!.toLowerCase();
+    const locale = DAYJS_LOCALE_MAP[normalized] ?? normalized;
 
     dayJSLocale = await import(`dayjs/locale/${locale}.js`);
   } catch {

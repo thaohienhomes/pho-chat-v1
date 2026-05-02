@@ -160,9 +160,20 @@ export const checkAuth =
           );
         }
       } catch (error) {
-        console.error('[Subscription Auth] Error validating subscription:', error);
-        // Don't block the request if subscription check fails - log and continue
-        // This prevents service disruption if the subscription service has issues
+        // PHO-249/A1.11: Fail closed when subscription/trial validation infra is down.
+        // Returning 503 prevents free-trial enforcement bypass during DB outages and
+        // signals clients to retry instead of silently granting elevated access.
+        console.error('[Subscription Auth] DB error — failing closed (PHO-249/A1.11):', error);
+        return new Response(
+          JSON.stringify({
+            error: 'AUTH_SERVICE_UNAVAILABLE',
+            message: 'Hệ thống đang bảo trì, vui lòng thử lại sau.',
+          }),
+          {
+            headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
+            status: 503,
+          },
+        );
       }
     }
 
