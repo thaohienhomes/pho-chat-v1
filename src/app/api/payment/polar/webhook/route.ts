@@ -142,20 +142,15 @@ export async function POST(req: Request) {
         console.error('[Polar Webhook] Invalid signature:', verifyErr.message);
         return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
       }
-      // SDKValidationError: signature valid, event type not in SDK schema.
-      // Preserve compatibility with event types the handler knows but SDK doesn't.
-      if (
-        verifyErr?.constructor?.name === 'SDKValidationError' ||
-        verifyErr?.name === 'SDKValidationError'
-      ) {
-        console.warn(
-          '[Polar Webhook] Signature valid but event type not in SDK schema, using raw parse:',
-          verifyErr?.message,
-        );
-        event = JSON.parse(body);
-      } else {
-        throw verifyErr;
-      }
+      // PHO-250/A1.14: Reject every non-verified error. The previous fallback parsed
+      // the raw body on SDKValidationError, which could process events whose signature
+      // had not been confirmed before schema validation. If a new Polar event type
+      // legitimately fails SDK schema, upgrade @polar-sh/sdk instead of trusting raw body.
+      console.error('[Polar Webhook] Signature validation failed (PHO-250/A1.14):', {
+        error: verifyErr instanceof Error ? verifyErr.message : String(verifyErr),
+        errorType: verifyErr?.constructor?.name,
+      });
+      return NextResponse.json({ error: 'WEBHOOK_SIGNATURE_INVALID' }, { status: 401 });
     }
 
     console.log('📥 Polar Webhook Event:', {
