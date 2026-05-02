@@ -104,6 +104,13 @@ export interface UsageLogParams {
   // otherwise mid-stream disconnects let users escape billing while the
   // gateway has already charged us.
   partial?: boolean;
+  /**
+   * PHO-246: resolved user plan ID. Caller passes the value already used to
+   * authorize this request so PostHog `$ai_generation` events carry plan +
+   * tier and cost can be sliced per plan / per tier. If omitted, the
+   * capture path falls back to a DB lookup (logs a warning).
+   */
+  planId?: string;
   provider: string;
   responseTimeMs?: number;
   sessionId?: string;
@@ -276,6 +283,8 @@ export async function processModelUsage(
 
       // PHO-231: emit $ai_generation to PostHog so the cost dashboard sees
       // every metered call (chat, embeddings, ...) — not just send_message.
+      // PHO-246: forward `planId` (when caller passed it) and the resolved
+      // `tier` so we can slice cost per plan / per tier in PostHog.
       // Fire-and-forget; observability must never block billing.
       captureAiGeneration({
         costPoints: pointsDeducted,
@@ -286,7 +295,9 @@ export async function processModelUsage(
         model: usageLog.model,
         outputTokens: usageLog.outputTokens,
         partial: usageLog.partial,
+        planId: usageLog.planId,
         provider: usageLog.provider,
+        tier,
         userId,
       });
     }

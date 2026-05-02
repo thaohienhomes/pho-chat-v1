@@ -764,6 +764,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                   model: actualModelUsed,
                   outputTokens,
                   partial: !completed,
+                  // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+                  planId: userPlanId,
                   provider: actualProviderUsed,
                   responseTimeMs,
                 },
@@ -832,6 +834,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                 inputTokens,
                 model: actualModelUsed,
                 outputTokens,
+                // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+                planId: userPlanId,
                 provider: actualProviderUsed,
                 responseTimeMs,
               },
