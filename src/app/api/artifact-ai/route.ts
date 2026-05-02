@@ -201,8 +201,10 @@ export async function POST(req: NextRequest) {
             where: eq(modelPricing.modelId, modelId),
           });
           if (pricing) {
-            inputPrice = pricing.inputPrice ?? inputPrice;
-            outputPrice = pricing.outputPrice ?? outputPrice;
+            // PHO-223 alignment: read points-denominated rates. inputPrice/outputPrice
+            // are legacy VND columns (default 0) — using them yielded cost=0.
+            inputPrice = pricing.inputCostPer1M ?? inputPrice;
+            outputPrice = pricing.outputCostPer1M ?? outputPrice;
           }
         } catch {
           // Use tier fallback
