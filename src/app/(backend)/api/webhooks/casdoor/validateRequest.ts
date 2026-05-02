@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 
 import { authEnv } from '@/envs/auth';
+import { timingSafeCompareStrings } from '@/utils/timingSafeCompare';
 
 export type CasdoorUserEntity = {
   avatar?: string;
@@ -21,7 +22,11 @@ export const validateRequest = async (request: Request, secret?: string) => {
   const headerPayload = await headers();
   const casdoorSecret = headerPayload.get('casdoor-secret')!;
   try {
-    if (casdoorSecret === secret) {
+    // PHO-245 / A1.12: constant-time compare prevents timing attack on the
+    // shared secret. `timingSafeCompareStrings` returns false for missing or
+    // mismatched-length inputs, which also covers the previous `secret`
+    // undefined-fallback case.
+    if (secret && timingSafeCompareStrings(casdoorSecret, secret)) {
       return JSON.parse(payloadString, (k, v) =>
         k === 'object' && typeof v === 'string' ? JSON.parse(v) : v,
       ) as CasdoorWebhookPayload;
