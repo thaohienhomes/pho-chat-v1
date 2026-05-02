@@ -168,6 +168,8 @@ export async function POST(req: NextRequest) {
                 inputTokens,
                 model: modelId,
                 outputTokens,
+                // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+                planId: userPlanId,
                 provider,
                 responseTimeMs,
               });
@@ -339,6 +341,8 @@ export async function POST(req: NextRequest) {
           inputTokens,
           model: modelId,
           outputTokens,
+          // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+          planId: userPlanId,
           provider,
           responseTimeMs,
         });
@@ -365,6 +369,8 @@ export async function POST(req: NextRequest) {
         inputTokens,
         model: modelId,
         outputTokens,
+        // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+        planId: userPlanId,
         provider,
         responseTimeMs,
       });
