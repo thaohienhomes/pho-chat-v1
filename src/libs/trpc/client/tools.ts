@@ -57,7 +57,12 @@ const retryOnUnauthorizedLink: TRPCLink<ToolsRouter> = () => {
               if (shouldForceReauth()) {
                 forceReauth();
               }
-            }
+            } else if (status === 401 && retried && // PHO-252: second 401 after a successful client-side refresh.
+              // Server still rejects the fresh JWT — count it so
+              // shouldForceReauth() can escalate.
+              shouldForceReauth()) {
+                forceReauth();
+              }
             observer.error(err);
           },
           next: (value) => observer.next(value),

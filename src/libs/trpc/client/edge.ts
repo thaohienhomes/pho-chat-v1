@@ -54,7 +54,13 @@ const retryOnUnauthorizedLink: TRPCLink<EdgeRouter> = () => {
               if (shouldForceReauth()) {
                 forceReauth();
               }
-            }
+            } else if (status === 401 && retried && // PHO-252: second 401 after a successful client-side refresh.
+              // Server still rejects the fresh JWT (server-side session dead,
+              // kid mismatch, etc.). Count it so shouldForceReauth() can
+              // escalate instead of silently bubbling.
+              shouldForceReauth()) {
+                forceReauth();
+              }
             observer.error(err);
           },
           next: (value) => observer.next(value),
