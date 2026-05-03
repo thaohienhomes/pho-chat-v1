@@ -10,6 +10,8 @@ import {
   getUserCreditBalance,
   processModelUsage,
 } from '@/server/services/billing/credits';
+import { checkDailyCostCap } from '@/server/services/billing/dailyCostAggregation';
+import { getSecondsUntilMidnightVN } from '@/server/services/billing/dailyCostCaps';
 import { phoGatewayService } from '@/server/services/phoGateway';
 import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
@@ -84,6 +86,28 @@ export async function POST(req: NextRequest) {
   // PHO-241/A1.6: DB is the single source of truth. Never fall back to Clerk metadata.
   const userPlanId = await getUserPlanIdFromDB(userId);
   const modelTier = getModelTier(model);
+
+  // PHO-238 EMERGENCY: hard daily USD cap per (plan, tier). Pre-flight read,
+  // safe to run before checkTierAccess (no tier-slot side effect).
+  const usdCapCheck = await checkDailyCostCap(userId, userPlanId, modelTier);
+  if (!usdCapCheck.allowed) {
+    console.warn(
+      `🚫 [research/ai-summary] Daily USD cap blocked: ${usdCapCheck.reasonCode} ` +
+        `($${usdCapCheck.dailyCostUsed.toFixed(2)}/$${usdCapCheck.dailyCostCap.toFixed(2)}, ` +
+        `Plan: ${userPlanId}, Tier: ${modelTier}, User: ${userId})`,
+    );
+    const retryAfter = getSecondsUntilMidnightVN();
+    return NextResponse.json(
+      {
+        dailyCostCap: usdCapCheck.dailyCostCap,
+        dailyCostUsed: usdCapCheck.dailyCostUsed,
+        error: usdCapCheck.reason,
+        reasonCode: usdCapCheck.reasonCode,
+        retryAfter,
+      },
+      { headers: { 'Retry-After': String(retryAfter) }, status: 429 },
+    );
+  }
 
   const tierAccess = await checkTierAccess(userId, modelTier, userPlanId);
   if (!tierAccess.allowed) {

@@ -24,6 +24,8 @@ import {
   getUserCreditBalance,
   processModelUsage,
 } from '@/server/services/billing/credits';
+import { checkDailyCostCap } from '@/server/services/billing/dailyCostAggregation';
+import { getSecondsUntilMidnightVN } from '@/server/services/billing/dailyCostCaps';
 import { phoGatewayService } from '@/server/services/phoGateway';
 import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { ChatStreamPayload } from '@/types/openai/chat';
@@ -471,6 +473,32 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       }
 
       console.log(`[Tier Check] Model: ${data.model}, Tier: ${modelTier}, Plan: ${userPlanId}`);
+
+      // ============  2.0.5. Daily USD Cost Cap (PHO-238 EMERGENCY)  ============ //
+      // Hard ceiling on USD spend per (user, plan, tier, day) so the Phở Points
+      // generosity (e.g. 379K-credit FREE balance ≈ $760 budget) cannot be burned
+      // through expensive Tier 3 models. Pure read — runs BEFORE checkTierAccess
+      // so a blocked request does NOT consume an atomic tier slot. Resets at
+      // midnight Asia/Ho_Chi_Minh.
+      const usdCapCheck = await checkDailyCostCap(jwtPayload.userId, userPlanId, modelTier);
+      if (!usdCapCheck.allowed) {
+        console.warn(
+          `🚫 Daily USD cap blocked: ${usdCapCheck.reasonCode} ` +
+            `($${usdCapCheck.dailyCostUsed.toFixed(2)}/$${usdCapCheck.dailyCostCap.toFixed(2)}, ` +
+            `Plan: ${userPlanId}, Tier: ${modelTier}, User: ${jwtPayload.userId})`,
+        );
+        return createErrorResponse(AgentRuntimeErrorType.InsufficientQuota, {
+          dailyCostCap: usdCapCheck.dailyCostCap,
+          dailyCostUsed: usdCapCheck.dailyCostUsed,
+          error: {
+            message: usdCapCheck.reason || 'Bạn đã đạt giới hạn chi phí hôm nay cho tier này.',
+          },
+          provider: 'pho-chat',
+          reasonCode: usdCapCheck.reasonCode,
+          retryAfter: getSecondsUntilMidnightVN(),
+          upgradeUrl: '/settings/subscription',
+        });
+      }
 
       const tierAccess = await checkTierAccess(jwtPayload.userId, modelTier, userPlanId);
 
