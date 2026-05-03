@@ -14,6 +14,7 @@ export * from './message';
 export * from './nextauth';
 export * from './oidc';
 export * from './pricing';
+export * from './promoActivations';
 export * from './providerBalances';
 export * from './rag';
 export * from './ragEvals';
