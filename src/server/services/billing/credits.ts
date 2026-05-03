@@ -127,6 +127,31 @@ function getVietnamDateString(date: Date = new Date()): string {
   return vnTime.toISOString().slice(0, 10);
 }
 
+/**
+ * Process AI model usage: deduct Phở Points and log to usage_logs.
+ *
+ * PHO-237 (2026-05-03) — Token-based deduction: 1 Phở Point = $0.01 USD.
+ *
+ * Callers still pass `cost` as the LEGACY points-cost they compute themselves
+ * (e.g. `(in × inPts/1M + out × outPts/1M)` from `model_pricing`). Internally
+ * we convert to real USD via the documented seed ratio (1 pt ≈ $0.00004,
+ * see `scripts/seed-model-pricing-gateway.ts:21`) and derive the actual
+ * deduction from USD:
+ *
+ *     pointsDeducted = Math.ceil(costUSD × 100)   ⇔   Math.ceil(cost / 250)
+ *
+ * Effect (allocation unchanged — "stealth rebalance"):
+ *   $0.01 call →     1 pt  (was ~250)         — light users feel generous
+ *   $0.30 call →    30 pts (was ~7 500)
+ *   $7.50 call →   750 pts (was ~187 500)     — heavy users self-regulate
+ *   $15.00 call → 1 500 pts                   — expensive usage = expensive pts
+ *
+ * Free tier (Tier 1, first 5/day) still pays 0 — no forced minimum.
+ * `usage_logs.cost_usd` continues to record the real USD per call so the
+ * daily USD cap (PHO-238 / PR #46) keeps working unchanged.
+ *
+ * Decision: Hien approved 2026-05-03. Linear: PHO-237.
+ */
 export async function processModelUsage(
   userId: string,
   cost: number,
@@ -137,6 +162,12 @@ export async function processModelUsage(
   try {
     const db = await getServerDB();
     const now = new Date();
+
+    // PHO-237: legacy points-cost → real USD → token-based deduction.
+    // Prefer caller-provided `usageLog.costUSD` (forward-compatible with future
+    // per-model USD pricing); fall back to deriving from `cost` via the seed ratio.
+    const costUSD = usageLog?.costUSD ?? cost / 25_000;
+    const tokenBasedCost = Math.ceil(costUSD * 100);
 
     // 1. Get current user stats including all tier usage
     const userRows = await db
@@ -171,9 +202,9 @@ export async function processModelUsage(
     let newTier3Usage = isSameDay ? user.dailyTier3Usage || 0 : 0;
 
     // 3. Track points actually deducted — used by the unified usage_logs insert below.
-    //    Set per-branch; defaults to `cost` (atomic-slot path) and is overwritten to
-    //    `finalCost` if the free-tier branch waives it.
-    let pointsDeducted = cost;
+    //    PHO-237: defaults to `tokenBasedCost` (atomic-slot path); overwritten
+    //    to `finalCost` (0 when free-tier waives) in the counter-update path.
+    let pointsDeducted = tokenBasedCost;
 
     // 4. Branch: atomic-slot path (Tier 2/3) vs counter-update path (Tier 1 / fallback).
     //    PHO-224: BOTH branches now fall through to the usage_logs insert below.
@@ -182,24 +213,24 @@ export async function processModelUsage(
     if (tierSlotAlreadyAcquired && (tier === 2 || tier === 3)) {
       // Atomic-slot path: tier counters are managed exclusively by atomicAcquireTierSlot()
       // in checkTierAccess(). Only deduct credits here; don't touch counters or lastUsageDate.
-      if (cost > 0) {
+      if (tokenBasedCost > 0) {
         await db
           .update(users)
           .set({
-            lifetimeSpent: sql`${users.lifetimeSpent} + ${cost}`,
-            phoPointsBalance: sql`GREATEST(0, ${users.phoPointsBalance} - ${cost})`,
+            lifetimeSpent: sql`${users.lifetimeSpent} + ${tokenBasedCost}`,
+            phoPointsBalance: sql`GREATEST(0, ${users.phoPointsBalance} - ${tokenBasedCost})`,
           })
           .where(eq(users.id, userId));
         console.log(
-          `[Credits] Deducted ${cost} Credits (Tier ${tier}, atomic slot). User: ${userId}`,
+          `[Credits] Deducted ${tokenBasedCost} pts (Tier ${tier}, atomic slot, $${costUSD.toFixed(4)}). User: ${userId}`,
         );
       }
-      // pointsDeducted already === cost (set above).
+      // pointsDeducted already === tokenBasedCost (set above).
     } else {
       // Counter-update path: Tier 1 (with free-tier waiver) or non-slot fallback.
       // Free Tier: first FREE_TIER_LIMIT Tier 1 requests/day are zero-cost.
       const FREE_TIER_LIMIT = 5;
-      let finalCost = cost;
+      let finalCost = tokenBasedCost;
       let isFree = false;
 
       switch (tier) {
@@ -244,7 +275,7 @@ export async function processModelUsage(
           );
         } else if (finalCost > 0) {
           console.log(
-            `[Credits] Deducted ${finalCost} Credits (Tier ${tier}). T1=${newTier1Usage}, T2=${newTier2Usage}, T3=${newTier3Usage}. User: ${userId}`,
+            `[Credits] Deducted ${finalCost} pts (Tier ${tier}, $${costUSD.toFixed(4)}). T1=${newTier1Usage}, T2=${newTier2Usage}, T3=${newTier3Usage}. User: ${userId}`,
           );
         }
       }
@@ -256,10 +287,22 @@ export async function processModelUsage(
     // increments pho:ratelimit:* keys via checkTierAccess() in the chat route.
     // The duplicate INCR here was causing admin dashboard to show 2x actual usage.
 
+    // PHO-237: monitoring log — searchable as `[billing] Points deducted` in
+    // Vercel logs to verify the new formula is in effect post-deploy.
+    console.log('[billing] Points deducted', {
+      costUSD: costUSD.toFixed(4),
+      formula: '1 point = $0.01 USD (Math.ceil(costUSD × 100))',
+      legacyPointsCost: cost,
+      model: usageLog?.model,
+      pointsDeducted,
+      tier,
+      userId,
+    });
+
     // 5. Log to usage_logs with actual model/tier/tokens (PHO-224: unified for BOTH branches).
     if (usageLog) {
       const VND_RATE = 24_167;
-      const costUSD = usageLog.costUSD ?? pointsDeducted * 0.000_04; // fallback: 1 point ≈ $0.00004
+      // PHO-237: `costUSD` already computed at top; no fallback recomputation here.
 
       try {
         await db.insert(usageLogs).values({
