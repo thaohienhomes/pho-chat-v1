@@ -33,7 +33,16 @@ export const getMessageError = async (response: Response) => {
     const data = (await response.json()) as ErrorResponse;
     // PHO-238: prefer specific backend message (daily-cap detail, tier-block reason, ...)
     // over the generic translated key for the error type.
-    const specific = extractSpecificMessage(data.body);
+    //
+    // EXCEPTION: for Pho billing-limit codes (`DAILY_CAP_EXCEEDED` / `TIER_BLOCKED`)
+    // the backend message embeds raw dollar amounts ("đã dùng $26.50/$26.00 ..."),
+    // which Hien deliberately does not want surfaced in the user-facing alert
+    // (keep the messaging aspirational rather than transactional). We fall back to
+    // the generic translated key for these codes; the rich body is still passed
+    // through `body` so `<BillingLimit>` can render its own copy + alternatives.
+    const reasonCode = (data.body as { reasonCode?: string } | undefined)?.reasonCode;
+    const isBillingLimit = reasonCode === 'DAILY_CAP_EXCEEDED' || reasonCode === 'TIER_BLOCKED';
+    const specific = isBillingLimit ? undefined : extractSpecificMessage(data.body);
     chatMessageError = {
       body: data.body,
       message: specific ?? t(`response.${data.errorType}` as any, { ns: 'error' }),

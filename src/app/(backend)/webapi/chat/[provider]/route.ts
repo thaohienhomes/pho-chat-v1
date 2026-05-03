@@ -496,6 +496,9 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           provider: 'pho-chat',
           reasonCode: usdCapCheck.reasonCode,
           retryAfter: getSecondsUntilMidnightVN(),
+          // PHO-238 frontend: tier of the blocked request — drives `<BillingLimit>`'s
+          // tier-specific alternatives list (e.g. T3 block → suggest Sonnet 4.6 / Gemini Pro).
+          tier: modelTier,
           upgradeUrl: '/settings/subscription',
         });
       }
