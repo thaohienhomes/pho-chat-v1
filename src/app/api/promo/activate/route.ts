@@ -1,8 +1,8 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 
-import { subscriptions, users } from '@/database/schemas';
+import { promoActivations, subscriptions, users } from '@/database/schemas';
 import { getServerDB } from '@/database/server';
 import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
@@ -52,8 +52,25 @@ const VALID_PROMO_CODES: Record<
   },
 };
 
-// Track code usage in memory (in production, use DB)
-const codeUsageCount: Record<string, number> = {};
+/**
+ * Count how many times a promo code has been redeemed.
+ *
+ * PHO-248/A1.9: replaces the previous in-memory Record<string, number>
+ * counter, which was reset by Vercel cold starts and diverged across
+ * multi-instance deployments. The DB row in `promo_activations` is the
+ * single source of truth.
+ */
+async function getPromoCodeUsageCount(
+  db: Awaited<ReturnType<typeof getServerDB>>,
+  promoCode: string,
+): Promise<number> {
+  const result = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(promoActivations)
+    .where(eq(promoActivations.promoCode, promoCode));
+
+  return Number(result[0]?.count ?? 0);
+}
 
 /**
  * Calculate end of current month for points reset date
@@ -93,10 +110,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Mã khuyến mãi đã hết hạn.' }, { status: 410 });
     }
 
-    // Check max uses
+    const db = await getServerDB();
+
+    // PHO-248/A1.9: max-use check now reads from `promo_activations` (DB) so
+    // the limit survives Vercel cold starts and is consistent across function
+    // instances. A small race window (count → insert) can let 1–2 extra
+    // redemptions through; acceptable for promo codes vs. the cost of
+    // serializable transactions / advisory locks.
     if (promoConfig.maxUses) {
-      const currentUses = codeUsageCount[normalizedCode] || 0;
+      const currentUses = await getPromoCodeUsageCount(db, normalizedCode);
       if (currentUses >= promoConfig.maxUses) {
+        console.warn('[promo] Code exhausted', {
+          code: normalizedCode,
+          currentUses,
+          maxUses: promoConfig.maxUses,
+        });
         return NextResponse.json({ error: 'Mã khuyến mãi đã được sử dụng hết.' }, { status: 410 });
       }
     }
@@ -124,7 +152,6 @@ export async function POST(request: NextRequest) {
     // STEP 1 (AUTHORITATIVE): Sync database — users + subscriptions tables.
     // Must succeed before we touch Clerk; if this fails we abort.
     // =============================================
-    const db = await getServerDB();
 
     // 1a. Update users table: currentPlanId, phoPointsBalance, pointsResetDate, subscriptionStatus
     const pointsResetDate = getEndOfMonth();
@@ -191,6 +218,25 @@ export async function POST(request: NextRequest) {
       console.error('⚠️ [Promo] Wallet tier sync failed (non-critical):', walletError);
     }
 
+    // 1d. PHO-248/A1.9: record activation row for the redemption counter.
+    // ON CONFLICT DO NOTHING handles the rare race where two concurrent
+    // requests from the same user reach here before the existingPlan check
+    // settles. Failure here does NOT roll back the plan (user already has it
+    // via subscription update above) — we just log so the counter drift is
+    // visible.
+    try {
+      await db
+        .insert(promoActivations)
+        .values({ planId, promoCode: normalizedCode, userId })
+        .onConflictDoNothing();
+      console.log('✅ [Promo] Activation recorded:', { code: normalizedCode, userId });
+    } catch (activationError) {
+      console.error(
+        '⚠️ [Promo] Failed to record activation row (counter may drift):',
+        activationError,
+      );
+    }
+
     // =============================================
     // STEP 2 (DISPLAY ONLY): Update Clerk publicMetadata so the client cache
     // shows the new plan immediately. NOT authoritative — failure here does
@@ -241,8 +287,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Increment usage count
-    codeUsageCount[normalizedCode] = (codeUsageCount[normalizedCode] || 0) + 1;
+    // PHO-248/A1.9: emit a structured log line so anh can monitor remaining
+    // capacity per code from Vercel logs without querying the DB.
+    try {
+      const finalCount = await getPromoCodeUsageCount(db, normalizedCode);
+      console.log('[promo] activation complete', {
+        code: normalizedCode,
+        currentUses: finalCount,
+        maxUses: promoConfig.maxUses ?? null,
+        remaining: promoConfig.maxUses ? promoConfig.maxUses - finalCount : null,
+        userId,
+      });
+    } catch {
+      /* monitoring log only — never block the response */
+    }
 
     return NextResponse.json({
       activatedAt: new Date().toISOString(),
@@ -277,7 +335,14 @@ export async function GET(request: NextRequest) {
 
   const isExpired = promoConfig.expiresAt ? new Date(promoConfig.expiresAt) < new Date() : false;
 
-  const currentUses = codeUsageCount[normalizedCode] || 0;
+  // PHO-248/A1.9: read usage count from DB (was in-memory Map).
+  let currentUses = 0;
+  try {
+    const db = await getServerDB();
+    currentUses = await getPromoCodeUsageCount(db, normalizedCode);
+  } catch (countError) {
+    console.error('[promo] GET: failed to read usage count, defaulting to 0', countError);
+  }
   const isMaxedOut = promoConfig.maxUses ? currentUses >= promoConfig.maxUses : false;
 
   return NextResponse.json({
