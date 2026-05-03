@@ -28,30 +28,23 @@ export interface DailyCostCap {
 const DEFAULT_CAPS: DailyCostCap = { tier1: 1, tier2: 0, tier3: 0 };
 
 const PLAN_CAPS: Record<string, DailyCostCap> = {
-  
   // Lifetime plans
-lifetime_early_bird: { tier1: 10, tier2: 10, tier3: 10 },
+  lifetime_early_bird: { tier1: 10, tier2: 10, tier3: 10 },
 
-  
+  lifetime_last_call: { tier1: 10, tier2: 10, tier3: 10 },
 
-lifetime_last_call: { tier1: 10, tier2: 10, tier3: 10 },
+  lifetime_standard: { tier1: 10, tier2: 10, tier3: 10 },
 
-  
+  // Promo / beta plans
+  // PHO-238: T3 hard-blocked at $0 — medical_beta is FREE-tier and was burning $26/hr.
+  // Defense-in-depth: also blocked via PLAN_MODEL_ACCESS.allowedTiers + dailyTier3Limit=0.
+  medical_beta: { tier1: 5, tier2: 3, tier3: 0 },
 
-lifetime_standard: { tier1: 10, tier2: 10, tier3: 10 },
-  
-  
-// Promo / beta plans
-medical_beta: { tier1: 5, tier2: 3, tier3: 2 },
-  
+  vn_free: { tier1: 1, tier2: 0, tier3: 0 },
 
-vn_free: { tier1: 1, tier2: 0, tier3: 0 },
-
-  
-  
-vn_premium: { tier1: 5, tier2: 5, tier3: 5 },
+  vn_premium: { tier1: 5, tier2: 5, tier3: 5 },
   // Subscription plans
-vn_pro: { tier1: 5, tier2: 5, tier3: 5 },
+  vn_pro: { tier1: 5, tier2: 5, tier3: 5 },
   vn_ultimate: { tier1: 10, tier2: 10, tier3: 10 },
 };
 

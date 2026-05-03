@@ -68,7 +68,9 @@ export const VN_PLANS: Record<string, PlanConfig> = {
     advancedAI: true,
     code: 'medical_beta',
     dailyTier2Limit: -1,
-    dailyTier3Limit: 10,
+    // PHO-238: Tier 3 disabled — medical_beta is FREE-tier and was burning $26/hr on flagship models.
+    // Defense-in-depth: blocked here, in PLAN_MODEL_ACCESS.allowedTiers, and in dailyCostCaps.ts.
+    dailyTier3Limit: 0,
     defaultModel: 'llama-3.1-8b-instant',
     defaultProvider: 'groq',
     displayName: 'Phở Medical Beta 🏥',
@@ -79,12 +81,12 @@ export const VN_PLANS: Record<string, PlanConfig> = {
     features: [
       '1M Phở Points/tháng',
       'Unlimited Tier 1 & 2',
-      '10 Tier 3/ngày',
+      'Tier 3 yêu cầu nâng cấp (Pro/Ultimate)',
       'Scientific Skills không giới hạn',
       'PubMed, ArXiv, Drug Interaction, Clinical Calculator',
       'Research Mode + Deep Research',
     ],
-    keyLimits: 'Unlim Tier 1 & 2. 10 Tier 3/day. Medical plugins.',
+    keyLimits: 'Unlim Tier 1 & 2. Tier 3 yêu cầu nâng cấp. Medical plugins.',
     monthlyPoints: 1_000_000,
     // 999k VNĐ/year — paid via Sepay/VietQR, activated by promo code
     price: 999_000,
@@ -596,14 +598,16 @@ export const PLAN_MODEL_ACCESS: Record<string, PlanModelAccess> = {
     models: [...TIER1_MODELS, ...TIER2_MODELS, ...TIER3_MODELS],
   },
 
-  // Medical Beta: Tier 1 + Tier 2 + Tier 3 (limited), Groq primary
-  // 999K VND/year — doctors plan with flagship model access
+  // Medical Beta: Tier 1 + Tier 2 only — Groq primary
+  // PHO-238: Tier 3 disabled. medical_beta is FREE-tier (promo activation) and was
+  // burning $26/hr on Tier 3 flagship models. Defense-in-depth alongside
+  // VN_PLANS.medical_beta.dailyTier3Limit = 0 and dailyCostCaps.ts T3 = $0.
   medical_beta: {
-    allowedTiers: [1, 2, 3],
-    dailyLimits: { tier2: -1, tier3: 10 },
+    allowedTiers: [1, 2],
+    dailyLimits: { tier2: -1 },
     defaultModel: 'llama-3.1-8b-instant',
     defaultProvider: 'groq',
-    models: [...TIER1_MODELS, ...TIER2_MODELS, ...TIER3_MODELS],
+    models: [...TIER1_MODELS, ...TIER2_MODELS],
   },
 
   // VN Basic (Phở Tái): Tier 1 + Tier 2 with 30 messages/day limit

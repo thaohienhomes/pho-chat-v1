@@ -393,6 +393,20 @@ export interface TierAccessResult {
 }
 
 /**
+ * Build a plan-aware Vietnamese error message when a tier is fully blocked
+ * (either disallowed by `allowedTiers` or has a daily cap of 0).
+ */
+function getTierBlockedReason(planId: string, tier: number): string {
+  if (planId === 'medical_beta' && tier === 3) {
+    return 'Gói Medical Beta (miễn phí) không hỗ trợ model Tier 3. Vui lòng nâng cấp lên gói Pro hoặc Ultimate.';
+  }
+  if (planId === 'vn_free' && tier >= 2) {
+    return `Gói miễn phí không hỗ trợ model Tier ${tier}. Vui lòng nâng cấp để sử dụng.`;
+  }
+  return 'Model này yêu cầu gói cao hơn. Vui lòng nâng cấp để sử dụng.';
+}
+
+/**
  * Atomically acquire a daily tier usage slot using PostgreSQL conditional UPDATE.
  * Prevents race conditions by combining the check and increment in a single query.
  * If the UPDATE matches (returns rows), the slot was acquired.
@@ -494,7 +508,7 @@ export async function checkTierAccess(
   if (!canUseTier(planId, tier)) {
     return {
       allowed: false,
-      reason: 'Model này yêu cầu gói cao hơn. Vui lòng nâng cấp để sử dụng.',
+      reason: getTierBlockedReason(planId, tier),
     };
   }
 
@@ -509,7 +523,7 @@ export async function checkTierAccess(
     return {
       allowed: false,
       dailyLimit: 0,
-      reason: 'Model này không khả dụng cho gói hiện tại của bạn.',
+      reason: getTierBlockedReason(planId, tier),
     };
   }
 
