@@ -17,6 +17,14 @@ import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFro
  * If the Clerk write fails after DB succeeds, we log a warning but still
  * return success to the user; a reconciliation cron resyncs Clerk later.
  *
+ * PHO-247: drift observability layer on top of PHO-241. When the Clerk
+ * sync fails after a successful DB write we additionally emit a
+ * `promo_clerk_sync_failed` PostHog event so admin can monitor frequency
+ * and trigger manual reconciliation when the rate exceeds threshold.
+ * The Clerk metadata also carries `planSyncedAt` (epoch ms) so the
+ * client-side cache can detect a stale value and refetch from the
+ * DB-backed `/api/subscription` endpoint.
+ *
  * Also sends a welcome email on successful activation.
  *
  * Currently supports:
@@ -251,6 +259,11 @@ export async function POST(request: NextRequest) {
         publicMetadata: {
           ...clerkUser.publicMetadata,
           planId,
+          // PHO-247: epoch ms of the last successful DB→Clerk sync. The
+          // client cache can compare this against the DB-backed
+          // /api/subscription response to detect stale Clerk metadata and
+          // force a refetch instead of trusting the cached value.
+          planSyncedAt: Date.now(),
           previousPlanId: existingPlan.planId,
           promoActivatedAt: new Date().toISOString(),
           promoCode: normalizedCode,
@@ -265,6 +278,28 @@ export async function POST(request: NextRequest) {
           userId,
         clerkError,
       );
+
+      // PHO-247: emit a structured PostHog event so admin can monitor
+      // drift frequency. Wrapped in its own try/catch — analytics MUST
+      // NOT mask the underlying Clerk failure or break the response.
+      try {
+        const { serverAnalytics } = await import('@/libs/analytics');
+        serverAnalytics.track({
+          name: 'promo_clerk_sync_failed',
+          properties: {
+            error_message: clerkError instanceof Error ? clerkError.message : String(clerkError),
+            previous_plan_id: existingPlan.planId,
+            promo_code: normalizedCode,
+            target_plan_id: planId,
+          },
+          userId,
+        });
+      } catch (analyticsError) {
+        console.error(
+          '⚠️ [Promo] PostHog drift event capture failed (non-critical):',
+          analyticsError,
+        );
+      }
     }
 
     // =============================================
