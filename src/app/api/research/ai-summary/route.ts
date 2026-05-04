@@ -1,3 +1,4 @@
+import { AgentRuntimeErrorType } from '@lobechat/model-runtime';
 import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -14,6 +15,7 @@ import { checkDailyCostCap } from '@/server/services/billing/dailyCostAggregatio
 import { getSecondsUntilMidnightVN } from '@/server/services/billing/dailyCostCaps';
 import { phoGatewayService } from '@/server/services/phoGateway';
 import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
+import { createErrorResponse } from '@/utils/errorResponse';
 
 export const maxDuration = 300;
 
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
 
   // PHO-238 EMERGENCY: hard daily USD cap per (plan, tier). Pre-flight read,
   // safe to run before checkTierAccess (no tier-slot side effect).
+  // Shape mirrors chat/[provider] so <BillingLimit> renders the same UI here.
   const usdCapCheck = await checkDailyCostCap(userId, userPlanId, modelTier);
   if (!usdCapCheck.allowed) {
     console.warn(
@@ -96,25 +99,27 @@ export async function POST(req: NextRequest) {
         `($${usdCapCheck.dailyCostUsed.toFixed(2)}/$${usdCapCheck.dailyCostCap.toFixed(2)}, ` +
         `Plan: ${userPlanId}, Tier: ${modelTier}, User: ${userId})`,
     );
-    const retryAfter = getSecondsUntilMidnightVN();
-    return NextResponse.json(
-      {
-        dailyCostCap: usdCapCheck.dailyCostCap,
-        dailyCostUsed: usdCapCheck.dailyCostUsed,
-        error: usdCapCheck.reason,
-        reasonCode: usdCapCheck.reasonCode,
-        retryAfter,
+    return createErrorResponse(AgentRuntimeErrorType.InsufficientQuota, {
+      dailyCostCap: usdCapCheck.dailyCostCap,
+      dailyCostUsed: usdCapCheck.dailyCostUsed,
+      error: {
+        message: usdCapCheck.reason || 'Bạn đã đạt giới hạn chi phí hôm nay cho tier này.',
       },
-      { headers: { 'Retry-After': String(retryAfter) }, status: 429 },
-    );
+      provider: 'pho-chat',
+      reasonCode: usdCapCheck.reasonCode,
+      retryAfter: getSecondsUntilMidnightVN(),
+      tier: modelTier,
+      upgradeUrl: '/settings/subscription',
+    });
   }
 
   const tierAccess = await checkTierAccess(userId, modelTier, userPlanId);
   if (!tierAccess.allowed) {
-    return NextResponse.json(
-      { error: tierAccess.reason || 'Model này yêu cầu gói cao hơn.' },
-      { status: 403 },
-    );
+    return createErrorResponse(AgentRuntimeErrorType.InsufficientQuota, {
+      error: { message: tierAccess.reason || 'Model này yêu cầu gói cao hơn.' },
+      provider: 'pho-chat',
+      upgradeUrl: '/settings/subscription',
+    });
   }
   const tierSlotAcquired = tierAccess.slotAcquired || false;
 

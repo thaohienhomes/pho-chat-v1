@@ -303,7 +303,15 @@ export function buildIframeHtml(encodedCode: string, title: string, identifier?:
           })
         })
         .then(function(r) { return r.json(); })
-        .then(function(d) { return d.text || d.error || 'No response'; });
+        .then(function(d) {
+          if (d && d.text) return d.text;
+          // Billing/tier errors use createErrorResponse shape:
+          //   { body: { error: { message } }, errorType }
+          // Auth/validation errors still use raw NextResponse: { error: '...' }
+          var nestedMsg = d && d.body && d.body.error && d.body.error.message;
+          var rawMsg = d && typeof d.error === 'string' ? d.error : null;
+          return nestedMsg || rawMsg || 'No response';
+        });
       }
     };
 
