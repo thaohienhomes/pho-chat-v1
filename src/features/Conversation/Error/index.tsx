@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useProviderName } from '@/hooks/useProviderName';
 import { ChatMessage, ChatMessageError } from '@/types/message';
 
+import BillingLimit from './BillingLimit';
 import ChatInvalidAPIKey from './ChatInvalidApiKey';
 import ClerkLogin from './ClerkLogin';
 import ErrorJsonViewer from './ErrorJsonViewer';
@@ -99,6 +100,18 @@ const ErrorMessageExtra = memo<{ data: ChatMessage }>(({ data }) => {
 
     case AgentRuntimeErrorType.OllamaBizError: {
       return <OllamaBizError {...data} />;
+    }
+
+    // PHO-238: chat route emits InsufficientQuota with a `reasonCode` for daily
+    // USD cap / tier-block. Render the actionable BillingLimit UI; for any other
+    // InsufficientQuota (e.g. upstream provider quota), fall through to the
+    // default JSON viewer below.
+    case AgentRuntimeErrorType.InsufficientQuota: {
+      const reasonCode = (error.body as { reasonCode?: string } | undefined)?.reasonCode;
+      if (reasonCode === 'DAILY_CAP_EXCEEDED' || reasonCode === 'TIER_BLOCKED') {
+        return <BillingLimit data={data} />;
+      }
+      break;
     }
 
     /* ↓ cloud slot ↓ */

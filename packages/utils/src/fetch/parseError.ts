@@ -1,15 +1,51 @@
 import { ChatMessageError, ErrorResponse, ErrorType } from '@lobechat/types';
 import { t } from 'i18next';
 
+/**
+ * Pull a backend-provided user-facing message out of the error body, if any.
+ *
+ * Backends like the Pho daily-cap (PHO-238) or tier-block (PHO-241) paths embed
+ * a localized message inside the body so the alert can show the specific reason
+ * (e.g. "Bạn đã dùng hết hạn mức Tier 3 hôm nay ($26.50/$26.00)...") instead of
+ * the generic translated key for the error type. We accept a few shapes that
+ * have appeared in callers:
+ *
+ *   { body: { error: { message: "..." } } }   ← `createErrorResponse(...)` shape
+ *   { body: { message: "..." } }              ← legacy / direct shape
+ *   { body: { error: "..." } }                ← raw routes (artifact-ai, research)
+ *
+ * Falls back to undefined when nothing usable is present.
+ */
+const extractSpecificMessage = (body: any): string | undefined => {
+  if (!body || typeof body !== 'object') return undefined;
+  const candidates = [body.error?.message, body.message, body.error];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate;
+  }
+  return undefined;
+};
+
 export const getMessageError = async (response: Response) => {
   let chatMessageError: ChatMessageError;
 
   // try to get the biz error
   try {
     const data = (await response.json()) as ErrorResponse;
+    // PHO-238: prefer specific backend message (daily-cap detail, tier-block reason, ...)
+    // over the generic translated key for the error type.
+    //
+    // EXCEPTION: for Pho billing-limit codes (`DAILY_CAP_EXCEEDED` / `TIER_BLOCKED`)
+    // the backend message embeds raw dollar amounts ("đã dùng $26.50/$26.00 ..."),
+    // which Hien deliberately does not want surfaced in the user-facing alert
+    // (keep the messaging aspirational rather than transactional). We fall back to
+    // the generic translated key for these codes; the rich body is still passed
+    // through `body` so `<BillingLimit>` can render its own copy + alternatives.
+    const reasonCode = (data.body as { reasonCode?: string } | undefined)?.reasonCode;
+    const isBillingLimit = reasonCode === 'DAILY_CAP_EXCEEDED' || reasonCode === 'TIER_BLOCKED';
+    const specific = isBillingLimit ? undefined : extractSpecificMessage(data.body);
     chatMessageError = {
       body: data.body,
-      message: t(`response.${data.errorType}` as any, { ns: 'error' }),
+      message: specific ?? t(`response.${data.errorType}` as any, { ns: 'error' }),
       type: data.errorType,
     };
   } catch {
