@@ -29,6 +29,7 @@ Desktop.ini
 .temp/
 temp/
 tmp/
+.build-tmp/
 *.tmp
 *.temp
 *.log
