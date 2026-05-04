@@ -11,13 +11,22 @@
  * Outputs METRIC lines for the autoresearch loop.
  * Cross-platform: works on Windows (pnpm) + Linux.
  */
-
 import { execSync } from 'node:child_process';
-import { readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 const ROOT = process.cwd();
 const STATIC_DIR = join(ROOT, '.next', 'static');
+
+// PHO-258: On Windows, sandbox the build's temp dir to a project-local path
+// so the build doesn't trip on stray .tmp files in AppData\Local\Temp. See
+// scripts/with-local-tmp.mjs for the full explanation.
+const BUILD_TMP = join(ROOT, '.build-tmp');
+if (process.platform === 'win32' && !existsSync(BUILD_TMP)) {
+  mkdirSync(BUILD_TMP, { recursive: true });
+}
+const TMP_OVERRIDE =
+  process.platform === 'win32' ? { TEMP: BUILD_TMP, TMP: BUILD_TMP, TMPDIR: BUILD_TMP } : {};
 
 /**
  * Recursively collect all files in a directory
@@ -46,7 +55,7 @@ function walkDir(dir) {
 function findNextBin() {
   // Try 1: direct node_modules/.bin (works on npm/yarn and some pnpm setups)
   const dotBin = join(ROOT, 'node_modules', '.bin', 'next');
-  
+
   // Try 2: resolve next/dist/bin/next from pnpm store
   const pnpmDir = join(ROOT, 'node_modules', '.pnpm');
   if (existsSync(pnpmDir)) {
@@ -63,13 +72,13 @@ function findNextBin() {
       }
     } catch {}
   }
-  
+
   // Try 3: standard node_modules/next
   const standard = join(ROOT, 'node_modules', 'next', 'dist', 'bin', 'next');
   if (existsSync(standard)) {
     return `node "${standard}"`;
   }
-  
+
   // Fallback: use .bin shim (may work on some systems)
   return `"${dotBin}"`;
 }
@@ -87,8 +96,9 @@ try {
     env: {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: '1',
-      UPLOAD_SOURCEMAPS: '0',
       NODE_OPTIONS: '--max-old-space-size=8192',
+      UPLOAD_SOURCEMAPS: '0',
+      ...TMP_OVERRIDE,
     },
     shell: true,
     stdio: ['pipe', 'pipe', 'pipe'],
