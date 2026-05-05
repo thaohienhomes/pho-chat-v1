@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { subscriptions } from '@/database/schemas/billing';
 import { getServerDB } from '@/database/server';
 import { pino } from '@/libs/logger';
+import { captureServerEvent } from '@/libs/posthog-server';
 import { PLAN_TIERS, calculateProratedAmount } from '@/server/services/billing/proration';
 
 /**
@@ -56,11 +57,6 @@ const VALID_PLAN_IDS = new Set<PlanId>([
 
 interface UpgradeRequest {
   billingCycle: 'monthly' | 'yearly';
-  /**
-   * If true, skip payment requirement and just update subscription
-   * Used for downgrades or when payment is confirmed via webhook
-   */
-  bypassPayment?: boolean;
   newPlanId: string; // vn_free | vn_basic | vn_pro | vn_team (or legacy: starter | premium | ultimate)
   /** Order ID from completed Sepay payment (for upgrade with payment) */
   paymentOrderId?: string;
@@ -92,7 +88,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body: UpgradeRequest = await request.json();
+    // `request.json()` may return null, an array, or a primitive — using the
+    // `in` operator on any of those throws and the outer catch would convert
+    // a malformed-body 400 into a misleading 500. Validate the shape first.
+    const parsedBody = await request.json();
+    if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return NextResponse.json(
+        { error: 'Invalid request body', success: false },
+        { status: 400 },
+      );
+    }
+    const rawBody = parsedBody as Record<string, unknown>;
+
+    // Reject any client-supplied bypass flag — payment authorization MUST come
+    // from the Sepay webhook handler (server-internal service call), never
+    // from a value the client can set in the request body. Surface as a 403
+    // and capture a security event so we can spot scraping/abuse in PostHog.
+    if ('bypassPayment' in rawBody) {
+      captureServerEvent('billing_bypass_denied', userId, {
+        endpoint: '/api/subscription/upgrade',
+        new_plan_id: typeof rawBody.newPlanId === 'string' ? rawBody.newPlanId : null,
+        reason: 'client_supplied_bypass_payment_flag',
+      });
+      pino.warn(
+        { userId, attemptedPlan: rawBody.newPlanId },
+        'Rejected client-supplied bypassPayment flag on /api/subscription/upgrade',
+      );
+      return NextResponse.json(
+        { error: 'bypassPayment is not accepted on this endpoint', success: false },
+        { status: 403 },
+      );
+    }
+
+    const body = rawBody as unknown as UpgradeRequest;
     const { newPlanId, billingCycle } = body;
 
     if (!newPlanId || !billingCycle) {
@@ -165,12 +193,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       'Processing subscription upgrade/downgrade',
     );
 
-    // For upgrades with payment required, create Sepay payment and return payment URL
-    // Only proceed with direct update if:
-    // - It's a downgrade (proratedAmount <= 0)
-    // - Or bypassPayment is true (payment already confirmed via webhook)
-    // - Or proratedAmount is 0 (no payment needed)
-    if (isUpgrade && proratedAmount > 0 && !body.bypassPayment) {
+    // For upgrades with prorated cost, ALWAYS create Sepay payment and return
+    // payment URL. The Sepay webhook (verified via HMAC) is responsible for
+    // applying the plan change once the user has paid — never the client.
+    // Direct update only happens for downgrades / zero-cost changes below.
+    if (isUpgrade && proratedAmount > 0) {
       // Create Sepay payment for upgrade fee
       const { SepayPaymentGateway, sepayGateway } = await import('@/libs/sepay');
       const { createPaymentRecord } = await import('@/server/services/billing/sepay');

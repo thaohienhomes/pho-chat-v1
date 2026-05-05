@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 
 import { PLAN_MODEL_ACCESS, getAllowedTiersForPlan } from '@/config/pricing';
 import { pino } from '@/libs/logger';
+import { captureServerEvent } from '@/libs/posthog-server';
 import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { subscriptionModelAccessService } from '@/services/subscription/modelAccess';
 
@@ -34,15 +35,42 @@ interface AllowedModelsResponse {
  */
 export async function GET(): Promise<NextResponse<AllowedModelsResponse>> {
   try {
-    // STAGING BYPASS: Allow all models in preview/development environments for testing
-    // Requires explicit STAGING_TIER_BYPASS=true to prevent accidental production leaks
-    const isPreviewEnv =
-      process.env.STAGING_TIER_BYPASS === 'true' &&
-      (process.env.VERCEL_ENV === 'preview' ||
-        process.env.VERCEL_ENV === 'development' ||
-        process.env.NODE_ENV === 'development');
+    // STAGING BYPASS: Allow all models in preview/development environments for testing.
+    // Requires explicit STAGING_TIER_BYPASS=true. Hard guard: refuse to honor
+    // the env var on production deployments even if someone sets it by
+    // accident — never silently bypass billing.
+    const stagingFlag = process.env.STAGING_TIER_BYPASS === 'true';
+    const isNonProdEnv =
+      process.env.VERCEL_ENV === 'preview' ||
+      process.env.VERCEL_ENV === 'development' ||
+      process.env.NODE_ENV === 'development';
+    const isPreviewEnv = stagingFlag && isNonProdEnv;
+
+    if (stagingFlag && !isNonProdEnv) {
+      captureServerEvent('billing_bypass_denied', 'anonymous', {
+        endpoint: '/api/subscription/models/allowed',
+        node_env: process.env.NODE_ENV,
+        reason: 'staging_flag_in_production',
+        vercel_env: process.env.VERCEL_ENV,
+      });
+      pino.error(
+        { vercel_env: process.env.VERCEL_ENV },
+        'STAGING_TIER_BYPASS=true on production deployment — refusing bypass',
+      );
+      return NextResponse.json(
+        { error: 'Misconfigured: STAGING_TIER_BYPASS not allowed in production', success: false },
+        { status: 500 },
+      );
+    }
 
     if (isPreviewEnv) {
+      // userId may not be resolved yet (auth() runs below); use 'anonymous' so
+      // the event still lands and we can debug staging usage.
+      captureServerEvent('billing_bypass_used', 'anonymous', {
+        endpoint: '/api/subscription/models/allowed',
+        mode: 'staging_env_var',
+        vercel_env: process.env.VERCEL_ENV,
+      });
       console.warn(
         '⚠️ [STAGING BYPASS ACTIVE] Returning all tiers — STAGING_TIER_BYPASS=true, ' +
           `VERCEL_ENV=${process.env.VERCEL_ENV}, NODE_ENV=${process.env.NODE_ENV}`,

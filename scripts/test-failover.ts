@@ -15,6 +15,17 @@ async function runBenchmark(testName: string, model: string, provider?: string) 
   const startTime = Date.now();
 
   try {
+    const adminUserId = process.env.PHO_GATEWAY_LABS_ADMIN_USER_ID;
+    if (!adminUserId) {
+      console.error(
+        '❌ PHO_GATEWAY_LABS_ADMIN_USER_ID not set in env — labs bypass requires admin attribution.',
+      );
+      // Fail fast so misconfigured CI cannot silently turn the benchmark into a
+      // no-op. Without this, the outer `main()` would continue and the process
+      // would exit 0 with no useful work done.
+      process.exit(1);
+    }
+
     const response = await fetch(API_URL, {
       body: JSON.stringify({
         messages: [{ content: 'Say "Hi" in strictly 2 words.', role: 'user' }],
@@ -25,6 +36,7 @@ async function runBenchmark(testName: string, model: string, provider?: string) 
       headers: {
         'Authorization': `Bearer ${process.env.PHO_GATEWAY_LABS_TOKEN}`,
         'Content-Type': 'application/json',
+        'X-Admin-User-Id': adminUserId,
       },
       method: 'POST',
     });

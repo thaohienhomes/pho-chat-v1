@@ -119,3 +119,60 @@ export function captureAiGeneration(params: CaptureAiGenerationParams): void {
     console.warn('[PostHog Server] $ai_generation capture failed:', (e as Error)?.message);
   });
 }
+
+/**
+ * Fire-and-forget capture of an arbitrary server-side event.
+ *
+ * Used for security/audit events where we need a durable trail but cannot
+ * block the request path. Examples: `billing_bypass_used`,
+ * `billing_bypass_denied`. Distinct-id is required so PostHog can attribute
+ * the event to a person; pass `'anonymous'` for unauthenticated callers.
+ *
+ * Event names MUST NOT start with `$` — that prefix is reserved for PostHog
+ * built-in events and will be silently filtered in some queries.
+ */
+export function captureServerEvent(
+  event: string,
+  distinctId: string,
+  properties: Record<string, unknown> = {},
+): void {
+  if (!POSTHOG_KEY) {
+    // Audit events for billing/security must not vanish silently when PostHog
+    // is misconfigured — that's exactly the failure mode where we most need
+    // to know. Loud warning, but still non-blocking.
+    console.warn(
+      `[PostHog Server] NEXT_PUBLIC_POSTHOG_KEY missing — dropping event '${event}' for distinctId '${distinctId}'`,
+    );
+    return;
+  }
+  if (event.startsWith('$')) {
+    console.warn(`[PostHog Server] event name '${event}' uses reserved $ prefix; skipping.`);
+    return;
+  }
+
+  const body = {
+    api_key: POSTHOG_KEY,
+    distinct_id: distinctId || 'anonymous',
+    event,
+    properties,
+    timestamp: new Date().toISOString(),
+  };
+
+  void fetch(`${POSTHOG_HOST}/capture/`, {
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  })
+    .then((response) => {
+      if (!response.ok) {
+        // PostHog rejected the event — surface so misconfigured projects /
+        // rate limits show up in the function logs instead of disappearing.
+        console.warn(
+          `[PostHog Server] ${event} capture rejected: ${response.status} ${response.statusText}`,
+        );
+      }
+    })
+    .catch((e) => {
+      console.warn(`[PostHog Server] ${event} capture failed:`, (e as Error)?.message);
+    });
+}
