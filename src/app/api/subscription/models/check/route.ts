@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getModelTier } from '@/config/pricing';
 import { pino } from '@/libs/logger';
+import { captureServerEvent } from '@/libs/posthog-server';
 import { subscriptionModelAccessService } from '@/services/subscription/modelAccess';
 
 /**
@@ -72,14 +73,42 @@ export async function POST(request: NextRequest): Promise<NextResponse<CheckMode
     );
 
     // PREVIEW BYPASS: Allow all models in preview/development environments for testing
-    // Requires explicit STAGING_TIER_BYPASS=true to prevent accidental production leaks
-    const isPreviewEnv =
-      process.env.STAGING_TIER_BYPASS === 'true' &&
-      (process.env.VERCEL_ENV === 'preview' ||
-        process.env.VERCEL_ENV === 'development' ||
-        process.env.NODE_ENV === 'development');
+    // Requires explicit STAGING_TIER_BYPASS=true to prevent accidental production leaks.
+    // Hard guard: refuse to honor the env var on production deployments even if
+    // someone sets it by accident in Vercel — never silently bypass billing.
+    const stagingFlag = process.env.STAGING_TIER_BYPASS === 'true';
+    const isNonProdEnv =
+      process.env.VERCEL_ENV === 'preview' ||
+      process.env.VERCEL_ENV === 'development' ||
+      process.env.NODE_ENV === 'development';
+    const isPreviewEnv = stagingFlag && isNonProdEnv;
+
+    if (stagingFlag && !isNonProdEnv) {
+      // STAGING_TIER_BYPASS=true was set on a production deployment. Loud
+      // failure is correct: throw rather than silently bypass.
+      captureServerEvent('billing_bypass_denied', userId, {
+        endpoint: '/api/subscription/models/check',
+        node_env: process.env.NODE_ENV,
+        reason: 'staging_flag_in_production',
+        vercel_env: process.env.VERCEL_ENV,
+      });
+      pino.error(
+        { userId, vercel_env: process.env.VERCEL_ENV },
+        'STAGING_TIER_BYPASS=true on production deployment — refusing bypass',
+      );
+      return NextResponse.json(
+        { error: 'Misconfigured: STAGING_TIER_BYPASS not allowed in production', success: false },
+        { status: 500 },
+      );
+    }
 
     if (isPreviewEnv) {
+      captureServerEvent('billing_bypass_used', userId, {
+        endpoint: '/api/subscription/models/check',
+        mode: 'staging_env_var',
+        model_id: modelId,
+        vercel_env: process.env.VERCEL_ENV,
+      });
       console.warn('⚠️ [STAGING BYPASS ACTIVE] model check bypass — STAGING_TIER_BYPASS=true');
     }
 

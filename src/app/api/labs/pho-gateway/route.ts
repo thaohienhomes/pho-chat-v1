@@ -2,7 +2,9 @@ import { AgentRuntimeErrorType, ModelRuntime } from '@lobechat/model-runtime';
 import { ChatErrorType } from '@lobechat/types';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
+import { captureServerEvent } from '@/libs/posthog-server';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import { isAdmin } from '@/server/services/auth/adminGuard';
 import { phoGatewayService } from '@/server/services/phoGateway';
 import { ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
@@ -97,9 +99,15 @@ const coreHandler = async (req: Request, { jwtPayload }: any) => {
 const authenticatedHandler = checkAuth(coreHandler);
 
 export const POST = async (req: Request, options: any) => {
-  // Benchmark Bypass Logic (for test-failover script)
+  // Benchmark bypass for the CI test-failover script. Two-factor:
+  //   1. Shared `PHO_GATEWAY_LABS_TOKEN` (env-only, rotatable).
+  //   2. `X-Admin-User-Id` header → must resolve to an admin via Clerk
+  //      (`isAdmin()` checks env allowlist + Clerk role metadata).
+  // Token alone is NOT sufficient — that was the cost-leak we're closing.
   const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
   const labsToken = process.env.PHO_GATEWAY_LABS_TOKEN;
+  const adminUserIdHeader = req.headers.get('x-admin-user-id');
+  const tokenPresented = !!authHeader && authHeader.startsWith('Bearer ');
 
   if (!labsToken) {
     console.error('[labs/pho-gateway] PHO_GATEWAY_LABS_TOKEN not configured');
@@ -109,10 +117,56 @@ export const POST = async (req: Request, options: any) => {
     });
   }
 
-  if (authHeader === `Bearer ${labsToken}`) {
-    console.log('[Labs/PhoGateway] ✅ Authorized via PHO_GATEWAY_LABS_TOKEN bypass');
+  const tokenMatches = authHeader === `Bearer ${labsToken}`;
+
+  if (tokenMatches) {
+    if (!adminUserIdHeader) {
+      captureServerEvent('billing_bypass_denied', 'anonymous', {
+        endpoint: '/api/labs/pho-gateway',
+        reason: 'missing_admin_user_id_header',
+      });
+      console.warn('[Labs/PhoGateway] ❌ Token presented without X-Admin-User-Id header');
+      return new Response(
+        JSON.stringify({ error: 'X-Admin-User-Id header required for labs bypass' }),
+        { headers: { 'Content-Type': 'application/json' }, status: 403 },
+      );
+    }
+
+    const adminAuthorized = await isAdmin(adminUserIdHeader);
+    if (!adminAuthorized) {
+      captureServerEvent('billing_bypass_denied', adminUserIdHeader, {
+        endpoint: '/api/labs/pho-gateway',
+        reason: 'non_admin_user_id',
+      });
+      console.warn(
+        `[Labs/PhoGateway] ❌ Bypass denied: userId ${adminUserIdHeader} is not an admin`,
+      );
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: admin role required for labs bypass' }),
+        { headers: { 'Content-Type': 'application/json' }, status: 403 },
+      );
+    }
+
     const data = (await req.json()) as ChatStreamPayload;
-    return handleRequest(data, {} as any);
+    captureServerEvent('billing_bypass_used', adminUserIdHeader, {
+      endpoint: '/api/labs/pho-gateway',
+      model: data?.model,
+      provider: data?.provider,
+    });
+    console.log(
+      `[Labs/PhoGateway] ✅ Authorized via PHO_GATEWAY_LABS_TOKEN bypass (admin=${adminUserIdHeader})`,
+    );
+    return handleRequest(data, { userId: adminUserIdHeader } as any);
+  }
+
+  // Token mismatch with a Bearer header — likely an attacker probing the
+  // endpoint. Capture for security visibility, then fall through to the
+  // standard authenticated handler so legitimate Clerk-JWT callers still work.
+  if (tokenPresented) {
+    captureServerEvent('billing_bypass_denied', adminUserIdHeader || 'anonymous', {
+      endpoint: '/api/labs/pho-gateway',
+      reason: 'invalid_labs_token',
+    });
   }
 
   return authenticatedHandler(req, options);
