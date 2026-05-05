@@ -33,9 +33,10 @@ vi.mock('@/utils/errorResponse', () => ({
   createErrorResponse: () => new Response('err', { status: 500 }),
 }));
 
-const buildRequest = (headers: Record<string, string>, body: unknown = { model: 'm' }): Request =>
+const DEFAULT_BODY = { model: 'm' };
+const buildRequest = (headers: Record<string, string>, body?: unknown): Request =>
   new Request('https://pho.chat/api/labs/pho-gateway', {
-    body: JSON.stringify(body),
+    body: JSON.stringify(body ?? DEFAULT_BODY),
     headers: { 'content-type': 'application/json', ...headers },
     method: 'POST',
   });
