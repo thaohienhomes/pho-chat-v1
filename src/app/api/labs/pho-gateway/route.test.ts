@@ -50,7 +50,14 @@ describe('POST /api/labs/pho-gateway — admin-gated bypass', () => {
   });
 
   afterEach(() => {
-    process.env.PHO_GATEWAY_LABS_TOKEN = originalToken;
+    // Assigning `undefined` to a process.env key coerces to the string
+    // 'undefined' and leaks state across tests. Delete-or-restore preserves
+    // the original-unset case correctly.
+    if (originalToken === undefined) {
+      delete process.env.PHO_GATEWAY_LABS_TOKEN;
+    } else {
+      process.env.PHO_GATEWAY_LABS_TOKEN = originalToken;
+    }
   });
 
   it('returns 503 when PHO_GATEWAY_LABS_TOKEN is not configured', async () => {

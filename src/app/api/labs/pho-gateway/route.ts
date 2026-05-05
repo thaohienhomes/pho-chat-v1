@@ -1,5 +1,6 @@
 import { AgentRuntimeErrorType, ModelRuntime } from '@lobechat/model-runtime';
 import { ChatErrorType } from '@lobechat/types';
+import { timingSafeEqual } from 'node:crypto';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
 import { pino } from '@/libs/logger';
@@ -11,6 +12,22 @@ import { ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
 
 export const maxDuration = 300;
+
+/**
+ * Constant-time string equality. JS `===` short-circuits on the first
+ * differing byte, which would let a network-adjacent attacker recover a
+ * shared secret one byte at a time via response-latency measurements.
+ *
+ * Length is leaked (different-length strings return immediately), which is
+ * fine here: the expected value is `Bearer <fixed-token>`, so the length
+ * is structural rather than secret.
+ */
+const constantTimeEqual = (a: string, b: string): boolean => {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+};
 
 async function handleRequest(data: ChatStreamPayload, jwtPayload: any) {
   const { model, provider: requestedProvider } = data;
@@ -121,7 +138,7 @@ export const POST = async (req: Request, options: any) => {
     });
   }
 
-  const tokenMatches = authHeader === `Bearer ${labsToken}`;
+  const tokenMatches = !!authHeader && constantTimeEqual(authHeader, `Bearer ${labsToken}`);
 
   if (tokenMatches) {
     if (!adminUserIdHeader) {

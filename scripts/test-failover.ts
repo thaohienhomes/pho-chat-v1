@@ -20,7 +20,10 @@ async function runBenchmark(testName: string, model: string, provider?: string) 
       console.error(
         '❌ PHO_GATEWAY_LABS_ADMIN_USER_ID not set in env — labs bypass requires admin attribution.',
       );
-      return;
+      // Fail fast so misconfigured CI cannot silently turn the benchmark into a
+      // no-op. Without this, the outer `main()` would continue and the process
+      // would exit 0 with no useful work done.
+      process.exit(1);
     }
 
     const response = await fetch(API_URL, {
