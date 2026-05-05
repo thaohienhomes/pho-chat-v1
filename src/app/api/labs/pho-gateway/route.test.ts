@@ -135,20 +135,25 @@ describe('POST /api/labs/pho-gateway — admin-gated bypass', () => {
     const { captureServerEvent } = await import('@/libs/posthog-server');
 
     // Mismatched token → falls through to authenticatedHandler (which our mock
-    // is the identity wrapper around `coreHandler`). We only need to assert
-    // that the security event fires.
+    // is the identity wrapper around `coreHandler`). The handler reads the
+    // body and returns a Response; we assert on the security event AND on
+    // the promise resolving (no swallowed rejection).
     const res = await POST(
-      buildRequest({ Authorization: 'Bearer wrong_token' }, { model: 'm' }),
+      buildRequest(
+        { Authorization: 'Bearer wrong_token', 'X-Admin-User-Id': 'user_attacker' },
+        { model: 'm' },
+      ),
       {},
-    ).catch(() => null);
+    );
 
+    expect(res).toBeDefined();
     expect(captureServerEvent).toHaveBeenCalledWith(
       'billing_bypass_denied',
       'anonymous',
-      expect.objectContaining({ reason: 'invalid_labs_token' }),
+      expect.objectContaining({
+        reason: 'invalid_labs_token',
+        untrusted_admin_user_id: 'user_attacker',
+      }),
     );
-    // Response is whatever the (mocked) authenticated handler produces; we
-    // don't assert on its status here.
-    void res;
   });
 });

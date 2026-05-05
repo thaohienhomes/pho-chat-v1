@@ -88,7 +88,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const rawBody = (await request.json()) as Record<string, unknown>;
+    // `request.json()` may return null, an array, or a primitive — using the
+    // `in` operator on any of those throws and the outer catch would convert
+    // a malformed-body 400 into a misleading 500. Validate the shape first.
+    const parsedBody = await request.json();
+    if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return NextResponse.json(
+        { error: 'Invalid request body', success: false },
+        { status: 400 },
+      );
+    }
+    const rawBody = parsedBody as Record<string, unknown>;
 
     // Reject any client-supplied bypass flag — payment authorization MUST come
     // from the Sepay webhook handler (server-internal service call), never

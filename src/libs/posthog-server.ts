@@ -136,7 +136,15 @@ export function captureServerEvent(
   distinctId: string,
   properties: Record<string, unknown> = {},
 ): void {
-  if (!POSTHOG_KEY) return;
+  if (!POSTHOG_KEY) {
+    // Audit events for billing/security must not vanish silently when PostHog
+    // is misconfigured — that's exactly the failure mode where we most need
+    // to know. Loud warning, but still non-blocking.
+    console.warn(
+      `[PostHog Server] NEXT_PUBLIC_POSTHOG_KEY missing — dropping event '${event}' for distinctId '${distinctId}'`,
+    );
+    return;
+  }
   if (event.startsWith('$')) {
     console.warn(`[PostHog Server] event name '${event}' uses reserved $ prefix; skipping.`);
     return;
@@ -154,7 +162,17 @@ export function captureServerEvent(
     body: JSON.stringify(body),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
-  }).catch((e) => {
-    console.warn(`[PostHog Server] ${event} capture failed:`, (e as Error)?.message);
-  });
+  })
+    .then((response) => {
+      if (!response.ok) {
+        // PostHog rejected the event — surface so misconfigured projects /
+        // rate limits show up in the function logs instead of disappearing.
+        console.warn(
+          `[PostHog Server] ${event} capture rejected: ${response.status} ${response.statusText}`,
+        );
+      }
+    })
+    .catch((e) => {
+      console.warn(`[PostHog Server] ${event} capture failed:`, (e as Error)?.message);
+    });
 }

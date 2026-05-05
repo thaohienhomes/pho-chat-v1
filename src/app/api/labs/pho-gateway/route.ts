@@ -2,6 +2,7 @@ import { AgentRuntimeErrorType, ModelRuntime } from '@lobechat/model-runtime';
 import { ChatErrorType } from '@lobechat/types';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
+import { pino } from '@/libs/logger';
 import { captureServerEvent } from '@/libs/posthog-server';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
 import { isAdmin } from '@/server/services/auth/adminGuard';
@@ -110,7 +111,10 @@ export const POST = async (req: Request, options: any) => {
   const tokenPresented = !!authHeader && authHeader.startsWith('Bearer ');
 
   if (!labsToken) {
-    console.error('[labs/pho-gateway] PHO_GATEWAY_LABS_TOKEN not configured');
+    pino.error(
+      { endpoint: '/api/labs/pho-gateway' },
+      'PHO_GATEWAY_LABS_TOKEN not configured — labs bypass disabled',
+    );
     return new Response(JSON.stringify({ error: 'Service not configured' }), {
       headers: { 'Content-Type': 'application/json' },
       status: 503,
@@ -125,7 +129,10 @@ export const POST = async (req: Request, options: any) => {
         endpoint: '/api/labs/pho-gateway',
         reason: 'missing_admin_user_id_header',
       });
-      console.warn('[Labs/PhoGateway] ❌ Token presented without X-Admin-User-Id header');
+      pino.warn(
+        { endpoint: '/api/labs/pho-gateway' },
+        'Labs bypass denied: token presented without X-Admin-User-Id header',
+      );
       return new Response(
         JSON.stringify({ error: 'X-Admin-User-Id header required for labs bypass' }),
         { headers: { 'Content-Type': 'application/json' }, status: 403 },
@@ -138,8 +145,9 @@ export const POST = async (req: Request, options: any) => {
         endpoint: '/api/labs/pho-gateway',
         reason: 'non_admin_user_id',
       });
-      console.warn(
-        `[Labs/PhoGateway] ❌ Bypass denied: userId ${adminUserIdHeader} is not an admin`,
+      pino.warn(
+        { adminUserIdHeader, endpoint: '/api/labs/pho-gateway' },
+        'Labs bypass denied: claimed userId is not an admin',
       );
       return new Response(
         JSON.stringify({ error: 'Forbidden: admin role required for labs bypass' }),
@@ -153,8 +161,9 @@ export const POST = async (req: Request, options: any) => {
       model: data?.model,
       provider: data?.provider,
     });
-    console.log(
-      `[Labs/PhoGateway] ✅ Authorized via PHO_GATEWAY_LABS_TOKEN bypass (admin=${adminUserIdHeader})`,
+    pino.info(
+      { adminUserId: adminUserIdHeader, model: data?.model, provider: data?.provider },
+      'Labs bypass authorized via PHO_GATEWAY_LABS_TOKEN',
     );
     return handleRequest(data, { userId: adminUserIdHeader } as any);
   }
@@ -162,10 +171,15 @@ export const POST = async (req: Request, options: any) => {
   // Token mismatch with a Bearer header — likely an attacker probing the
   // endpoint. Capture for security visibility, then fall through to the
   // standard authenticated handler so legitimate Clerk-JWT callers still work.
+  // Distinct-id is fixed to 'anonymous' because no identity has been verified
+  // yet — using the attacker-controlled header as identity would let probes
+  // pollute another user's PostHog timeline. The header is preserved as an
+  // explicitly untrusted property for forensics.
   if (tokenPresented) {
-    captureServerEvent('billing_bypass_denied', adminUserIdHeader || 'anonymous', {
+    captureServerEvent('billing_bypass_denied', 'anonymous', {
       endpoint: '/api/labs/pho-gateway',
       reason: 'invalid_labs_token',
+      untrusted_admin_user_id: adminUserIdHeader || null,
     });
   }
 
