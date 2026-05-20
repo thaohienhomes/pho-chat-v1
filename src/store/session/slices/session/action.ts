@@ -236,6 +236,8 @@ export const createSessionSlice: StateCreator<
           sessions: [],
         },
         onSuccess: (data) => {
+          const isFirstFetch = !get().isSessionsFirstFetchFinished;
+
           if (
             get().isSessionsFirstFetchFinished &&
             isEqual(get().sessions, data.sessions) &&
@@ -249,6 +251,28 @@ export const createSessionSlice: StateCreator<
             n('useFetchSessions/updateData') as any,
           );
           set({ isSessionsFirstFetchFinished: true }, false, n('useFetchSessions/onSuccess', data));
+
+          // PHO-260: signal an empty sidebar on the first fetch while signed in.
+          // Could be a brand-new user (legitimate) or a stale-cookie race that
+          // returned an empty list before link-level retry kicks in. Volume of
+          // this event vs. real new-user signups tells us how widespread the
+          // history-empty regression is.
+          if (
+            isFirstFetch &&
+            isLogin &&
+            data.sessions.length === 0 &&
+            data.sessionGroups.length === 0
+          ) {
+            try {
+              const analytics = getSingletonAnalyticsOptional();
+              analytics?.track({
+                name: 'chat_history_empty_after_login',
+                properties: { source: 'useFetchSessions' },
+              });
+            } catch {
+              // telemetry must never break UX
+            }
+          }
         },
         suspense: true,
       },

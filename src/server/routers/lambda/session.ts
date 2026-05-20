@@ -3,8 +3,7 @@ import { z } from 'zod';
 import { SessionModel } from '@/database/models/session';
 import { SessionGroupModel } from '@/database/models/sessionGroup';
 import { insertAgentSchema, insertSessionSchema } from '@/database/schemas';
-import { getServerDB } from '@/database/server';
-import { authedProcedure, publicProcedure, router } from '@/libs/trpc/lambda';
+import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { AgentChatConfigSchema } from '@/types/agent';
 import { LobeMetaDataSchema } from '@/types/meta';
@@ -95,14 +94,9 @@ export const sessionRouter = router({
       return data.id;
     }),
 
-  getGroupedSessions: publicProcedure.query(async ({ ctx }): Promise<ChatSessionList> => {
-    if (!ctx.userId) return { sessionGroups: [], sessions: [] };
-
-    const serverDB = await getServerDB();
-    const sessionModel = new SessionModel(serverDB, ctx.userId!);
-
-    return sessionModel.queryWithGroups();
-  }),
+  getGroupedSessions: sessionProcedure.query(
+    async ({ ctx }): Promise<ChatSessionList> => ctx.sessionModel.queryWithGroups(),
+  ),
 
   getSessions: sessionProcedure
     .input(

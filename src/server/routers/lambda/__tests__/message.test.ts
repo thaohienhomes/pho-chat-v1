@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MessageModel } from '@/database/models/message';
 import { FileService } from '@/server/services/file';
 import { ChatMessage, CreateMessageParams } from '@/types/message';
 import { UpdateMessageRAGParams } from '@/types/message/rag';
+
+import { messageRouter } from '../message';
 
 vi.mock('@/database/models/message', () => ({
   MessageModel: vi.fn(),
@@ -13,8 +15,17 @@ vi.mock('@/server/services/file', () => ({
   FileService: vi.fn(),
 }));
 
-vi.mock('@/database/server', () => ({
-  getServerDB: vi.fn(),
+vi.mock('@/database/server', () => {
+  const mockServerDB = {} as any;
+
+  return {
+    getServerDB: vi.fn().mockResolvedValue(mockServerDB),
+    serverDB: mockServerDB,
+  };
+});
+
+vi.mock('@/const/auth', () => ({
+  enableClerk: true,
 }));
 
 describe('messageRouter', () => {
@@ -114,11 +125,7 @@ describe('messageRouter', () => {
 
   it('should handle getMessages', async () => {
     const mockQuery = vi.fn().mockResolvedValue([{ id: 'msg1' }]);
-    const mockGetFullFileUrl = vi
-      .fn()
-      .mockImplementation((path: string | null, file: { fileType: string }) => {
-        return Promise.resolve('url');
-      });
+    const mockGetFullFileUrl = vi.fn().mockResolvedValue('url');
 
     vi.mocked(MessageModel).mockImplementation(
       () =>
@@ -239,5 +246,51 @@ describe('messageRouter', () => {
       fileChunks: [{ id: 'c1', similarity: 0.9 }],
       ragQueryId: 'q1',
     });
+  });
+});
+
+describe('messageRouter.getMessages (PHO-260)', () => {
+  const userId = 'test-user-id';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws UNAUTHORIZED when ctx.userId is missing', async () => {
+    // Before PHO-260 this returned an empty list even when the caller had
+    // valid history — masking stale-Clerk-cookie races as "no messages".
+    // The procedure must surface UNAUTHORIZED so retryOnUnauthorizedLink can
+    // refresh the token before the user sees an empty conversation.
+    const caller = messageRouter.createCaller({ userId: undefined } as any);
+
+    await expect(caller.getMessages({})).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('returns messages when authenticated', async () => {
+    const mockMessages = [{ content: 'hi', id: 'msg1' }];
+    const mockQuery = vi.fn().mockResolvedValue(mockMessages);
+    const mockGetFullFileUrl = vi.fn();
+
+    vi.mocked(MessageModel).mockImplementation(
+      () =>
+        ({
+          query: mockQuery,
+        }) as any,
+    );
+    vi.mocked(FileService).mockImplementation(
+      () =>
+        ({
+          getFullFileUrl: mockGetFullFileUrl,
+        }) as any,
+    );
+
+    const caller = messageRouter.createCaller({ userId } as any);
+    const input = { sessionId: 's1', topicId: 't1' };
+    const result = await caller.getMessages(input);
+
+    expect(result).toEqual(mockMessages);
+    expect(mockQuery).toHaveBeenCalledWith(input, expect.any(Object));
   });
 });
