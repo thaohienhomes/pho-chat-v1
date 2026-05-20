@@ -1,8 +1,7 @@
 import { z } from 'zod';
 
 import { TopicModel } from '@/database/models/topic';
-import { getServerDB } from '@/database/server';
-import { authedProcedure, publicProcedure, router } from '@/libs/trpc/lambda';
+import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { BatchTaskResult } from '@/types/service';
 
@@ -90,8 +89,7 @@ export const topicRouter = router({
     return ctx.topicModel.queryAll();
   }),
 
-  // TODO: this procedure should be used with authedProcedure
-  getTopics: publicProcedure
+  getTopics: topicProcedure
     .input(
       z.object({
         current: z.number().optional(),
@@ -99,14 +97,7 @@ export const topicRouter = router({
         sessionId: z.string().nullable().optional(),
       }),
     )
-    .query(async ({ input, ctx }) => {
-      if (!ctx.userId) return [];
-
-      const serverDB = await getServerDB();
-      const topicModel = new TopicModel(serverDB, ctx.userId);
-
-      return topicModel.query(input);
-    }),
+    .query(async ({ input, ctx }) => ctx.topicModel.query(input)),
 
   hasTopics: topicProcedure.query(async ({ ctx }) => {
     return (await ctx.topicModel.count()) === 0;
