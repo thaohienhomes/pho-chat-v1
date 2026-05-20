@@ -260,3 +260,93 @@ Bắt đầu từ Phase 1 (Interactive Images) trừ khi được chỉ định 
 - Dark theme (#0F172A family)
 - Mobile responsive (touch support) + ARIA labels
 - NEVER use localStorage/sessionStorage in Artifact components
+
+## Linear Automation (always-on for this project)
+
+Workspace cleanup baseline shipped 2026-05-20. Operating Manual lives at **PHO-260**
+(pinned in Linear). When Claude works on a PR linked to a Linear ticket — title
+contains `PHO-###` or branch matches `fix/pho-###-*` / `feat/pho-###-*` /
+`claude/pho-###-*` — apply the automation rules below.
+
+### After a PR is merged + production-verified
+
+1. Use Linear MCP `save_issue` to set the corresponding ticket status to **Done**
+   (state `Done`). If the work was a backfill — i.e. the ticket did not exist
+   before merge — create the ticket directly in `Done` with title prefix
+   `[Shipped]` and parent set to the relevant epic.
+2. Use Linear MCP `save_comment` on the same ticket. Comment body must include:
+   - PR URL (full GitHub link)
+   - Verification summary: what was tested, where (production / staging),
+     observed result
+   - Production observations: relevant telemetry / log signals, user feedback
+     if any
+   - Cross-links to any child tickets created (see below)
+3. NEVER auto-close parent epics (e.g. PHO-238). Epic closure is Hien's call.
+
+### Creating follow-up tickets
+
+- Use `save_issue` with `parentId` set to the parent epic's ID. Find the parent
+  by searching (`list_issues query="..."`), never guess by number.
+- Apply labels per the taxonomy defined in PHO-260 Operating Manual:
+  - **Type** (exactly one): `bug`, `feature`, `tech-debt`, `docs`, `ops`,
+    `research`
+  - **Area** (multi-select): `billing`, `auth`, `ui`, `performance`, `model`,
+    `payment`, `db`, `mcp`, `audit`, `security`, `observability`
+  - **Modifier** (rare): `blocked`, `needs-discussion`
+- Set priority using Linear's native field — `0` None, `1` Urgent, `2` High,
+  `3` Medium, `4` Low. Do NOT create `P0/P1/P2/P3` labels.
+- Land new tickets at the team's default state (currently `Backlog`) unless
+  the prompt specifies otherwise. Triage state exists for issues coming from
+  external integrations (GitHub Issues, Slack, customer Asks).
+- Pre-flight check: before creating a "new" ticket, search for an existing
+  ticket covering the same scope. The audit findings (`A1.x` references) in
+  `docs/audit/audit-1-auth-2026-04-30.md` already have parented tickets
+  (PHO-240, PHO-242, PHO-243, PHO-244, PHO-254) — comment on the existing one
+  rather than creating a duplicate.
+
+### Cross-linking adjacent tickets
+
+When two tickets are semantically related (same audit finding, same root
+cause, follow-up of follow-up), add a `save_comment` on the older ticket that
+references the newer one, with a 1-paragraph note explaining the link and
+whether scope overlaps.
+
+### Language conventions
+
+- Ticket titles and descriptions: **English**
+- Comments on tickets whose original description is Vietnamese: keep Vietnamese
+- Labels, initiatives, project names: **English** (per Operating Manual)
+- Commit messages: **gitmoji prefix + English** (existing convention)
+
+### Hard rules — never violate without Hien's explicit approval
+
+- Don't delete issues. Only archive or set status to `Cancelled`.
+- Don't change `assignee` on any issue. Hien is the owner of everything in
+  workspace.
+- Don't bulk-update more than **10 issues** in a single operation. For larger
+  cleanup, post a plan first, wait for approval.
+- Don't tag any **legacy labels** on new issues: `V1`, `V2`, `urgent`,
+  `Math Vertical`, `growth`, `medical-plugin`, `UX`, `Improvement`, `infra`.
+  These remain on historical issues for archeology but the new taxonomy
+  supersedes them.
+- Don't touch the `Duplicate` state — Linear manages it natively for
+  duplicate-resolution flows.
+
+### Stop conditions
+
+Pause and surface to Hien when any of these happen:
+
+- Linear MCP returns a rate-limit error → don't retry destructively
+- Parent epic search returns multiple candidates → ask which one
+- Free plan issue-cap approached (>240 non-archived) → flag before creating more
+- A ticket exists with overlapping scope to the one Claude wants to create →
+  ask whether to merge or proceed
+- Any mutation error not covered by the rules above
+
+### References
+
+- **PHO-260** — Phở Chat Workspace Operating Manual (pinned in Linear)
+- `docs/prompts/fix-chat-history-empty-PHO-260.md` — reusable bug-fix template
+- `docs/prompts/linear-ai-workspace-cleanup.md` — periodic workspace cleanup
+- `docs/prompts/claude-cli-linear-sync-PHO-260.md` — Linear sync workflow
+- `docs/audit/audit-1-auth-2026-04-30.md` — V1 audit findings catalogue
