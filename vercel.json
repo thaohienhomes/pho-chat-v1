@@ -10,7 +10,7 @@
   "buildCommand": "bun run build",
   "crons": [
     {
-      "path": "/api/cron/reset-lifetime-points",
+      "path": "/api/cron/grant-monthly-points",
       "schedule": "0 0 1 * *"
     },
     {

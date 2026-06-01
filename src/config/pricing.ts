@@ -1082,6 +1082,33 @@ export function getPlanByCode(code: string): PlanConfig | undefined {
 }
 
 /**
+ * Monthly Phở Points entitlement for a plan code (0 if unknown).
+ * Single source of truth for the monthly-grant cron and payment webhooks.
+ */
+export function getMonthlyPointsForPlan(code: string): number {
+  return getPlanByCode(code)?.monthlyPoints ?? 0;
+}
+
+/**
+ * Whether a plan receives a recurring monthly points grant.
+ * True for every paid plan (price > 0) and lifetime plan that has a positive
+ * monthlyPoints allowance. Free tiers (price === 0, e.g. vn_free) are excluded.
+ */
+export function isMonthlyGrantPlan(code: string): boolean {
+  const plan = getPlanByCode(code);
+  if (!plan) return false;
+  return (plan.price ?? 0) > 0 && (plan.monthlyPoints ?? 0) > 0;
+}
+
+/**
+ * All plan codes eligible for the monthly points grant.
+ * Used by the grant cron to select affected users.
+ */
+export function getMonthlyGrantPlanCodes(): string[] {
+  return [...Object.keys(VN_PLANS), ...Object.keys(GLOBAL_PLANS)].filter(isMonthlyGrantPlan);
+}
+
+/**
  * Check if user can use a model tier based on their plan
  * Uses PLAN_MODEL_ACCESS.allowedTiers for accurate tier checking
  */
