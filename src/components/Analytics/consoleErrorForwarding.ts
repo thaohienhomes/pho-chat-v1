@@ -48,6 +48,10 @@ const toError = (args: unknown[]): Error | null => {
  *  - We do NOT hook `window.onerror` / `window.onunhandledrejection` — autocapture
  *    already owns those channels, so we only forward the disjoint `console.error`
  *    channel.
+ *  - posthog-js's own `capture_console_errors` option MUST stay OFF while this
+ *    helper is installed (it is, because `capture_exceptions: true` only turns on
+ *    unhandled errors + rejections). Enabling both would double-capture — see the
+ *    warning at the `capture_exceptions` config in LobeAnalyticsProviderWrapper.
  *  - Benign-pattern filtering is applied centrally on the wrapped `posthog.capture`
  *    (see LobeAnalyticsProvider), and `captureException` routes through it, so
  *    `$exception` noise is suppressed there too.

@@ -63,6 +63,11 @@ import { useOpenAIProvider } from './OpenAI';
  * Checks both individual provider flags and group flags.
  */
 const useFilteredProviders = (providers: ProviderItem[]): ProviderItem[] => {
+  // TODO(PCFIX-1): each useFeatureFlagEnabled() below emits a `$feature_flag_called`
+  // event. This is INTENTIONALLY left as-is: it runs only on the settings/llm page,
+  // not the per-load chat path that PCFIX-1 fixed (see usePostHogFeatureFlags, which
+  // reads the consolidated variants map instead). If this filtering ever moves onto a
+  // hot path, consolidate these the same way to avoid re-introducing the flag burst.
   // Check group flags
   const premiumEnabled = useFeatureFlagEnabled('llm-group-premium');
   const fastEnabled = useFeatureFlagEnabled('llm-group-fast');
