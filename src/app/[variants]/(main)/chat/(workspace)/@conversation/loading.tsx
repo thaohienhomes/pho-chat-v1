@@ -1,12 +1,9 @@
-import { Skeleton } from 'antd';
-import { Flexbox } from 'react-layout-kit';
+import { SkeletonList } from '@/features/Conversation';
 
-export default () => (
-  <Flexbox flex={1} height={'100%'} style={{ position: 'relative' }} width={'100%'}>
-    <Flexbox flex={1} gap={16} padding={16}>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton active avatar key={i} paragraph={{ rows: 2 }} />
-      ))}
-    </Flexbox>
-  </Flexbox>
-);
+// PHO-92 (CLS): reuse the same skeleton the loaded list falls back to
+// (ChatList Suspense fallback + VirtualizedList first-load). The previous
+// bespoke full-width skeleton sat in a different container geometry
+// (left-aligned, padding 16) than the real content (WideScreenContainer:
+// centered, narrower, marginTop 24), so the loading -> content swap caused a
+// horizontal + vertical layout shift. SkeletonList matches the real geometry.
+export default () => <SkeletonList />;
