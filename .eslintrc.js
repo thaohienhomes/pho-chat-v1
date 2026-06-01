@@ -46,6 +46,26 @@ config.overrides = [
       'typescript-sort-keys/string-enum': 0,
     },
   },
+
+  {
+    // Vitest runs with `globals: true` (see vitest.config.mts), so test files use
+    // `vi`/`describe`/`it`/`expect`/lifecycle hooks as runtime globals without importing
+    // them. Declare them here so ESLint stops flagging `no-undef`.
+    files: ['**/*.test.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}', 'tests/**/*.{js,jsx,ts,tsx}'],
+    globals: {
+      afterAll: 'readonly',
+      afterEach: 'readonly',
+      beforeAll: 'readonly',
+      beforeEach: 'readonly',
+      describe: 'readonly',
+      expect: 'readonly',
+      it: 'readonly',
+      suite: 'readonly',
+      test: 'readonly',
+      vi: 'readonly',
+      vitest: 'readonly',
+    },
+  },
 ];
 
 module.exports = config;
