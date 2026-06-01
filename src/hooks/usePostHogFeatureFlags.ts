@@ -23,11 +23,19 @@ const LLM_PROVIDER_FLAGS = [
 /** Safety: if >60% flags are false, treat as misconfiguration and enable all */
 const MISCONFIGURATION_THRESHOLD = 0.6;
 
+/** Map of flagKey -> resolved value, as delivered by PostHog. */
+type FlagVariants = Record<string, boolean | string>;
+
 /**
  * Hook to access PostHog feature flags on the CLIENT side.
  *
- * Uses `window.posthog` (exposed by LobeAnalyticsProvider) with the
- * official `onFeatureFlags()` callback and `isFeatureEnabled()` API.
+ * PCFIX-1: flags are read in a SINGLE consolidated pass from the variants map
+ * delivered by `onFeatureFlags(cb)` (with `posthog.featureFlags.getFlagVariants()`
+ * as the already-loaded fallback). We deliberately avoid calling
+ * `isFeatureEnabled()` / `getFeatureFlag()` per flag, because each such call emits
+ * a `$feature_flag_called` event — previously ~12 events per page load (one per
+ * provider flag), a synchronous burst that contributed to INP/CLS. Reading from
+ * the variants map fires ZERO per-flag events while preserving identical values.
  *
  * FAIL-OPEN: If PostHog is not loaded or flags haven't been fetched yet,
  * `isFeatureEnabled` returns TRUE so all providers remain visible.
@@ -45,15 +53,15 @@ export const usePostHogFeatureFlags = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const readFlags = (ph: any) => {
+    const readFlags = (variants: FlagVariants | undefined) => {
       const flags: Record<string, boolean> = {};
       let falseCount = 0;
       let definedCount = 0;
 
       for (const key of LLM_PROVIDER_FLAGS) {
-        // isFeatureEnabled returns true/false/undefined
-        // undefined means flag not defined → treat as true (fail-open)
-        const value = ph.isFeatureEnabled(key);
+        // `variants` holds the resolved value for every evaluated flag.
+        // undefined => flag not defined in project => treat as true (fail-open).
+        const value = variants?.[key];
         flags[key] = value === undefined ? true : !!value;
         if (value !== undefined) {
           definedCount++;
@@ -81,20 +89,22 @@ export const usePostHogFeatureFlags = () => {
     };
 
     const setupFlags = (ph: any) => {
-      // onFeatureFlags fires when flags are loaded (or immediately if already loaded)
-      ph.onFeatureFlags(() => {
-        readFlags(ph);
+      // Single consolidated read: onFeatureFlags delivers the full variants map at
+      // once (and fires immediately if flags are already loaded). No per-flag
+      // isFeatureEnabled() calls => no `$feature_flag_called` burst (PCFIX-1).
+      ph.onFeatureFlags((_enabledKeys: string[], variants: FlagVariants) => {
+        readFlags(variants);
       });
 
-      // Also check if flags are already available right now
-      // (onFeatureFlags might not fire if flags were loaded before this hook mounts)
+      // Belt-and-suspenders: if flags were already cached before the listener was
+      // attached, read them straight from the local cache (no network, no events).
       try {
-        const existingFlags = ph.featureFlags?.getFlags?.();
-        if (existingFlags && existingFlags.length > 0) {
-          readFlags(ph);
+        const cached: FlagVariants | undefined = ph.featureFlags?.getFlagVariants?.();
+        if (cached && Object.keys(cached).length > 0) {
+          readFlags(cached);
         }
       } catch {
-        // getFlags might not exist in all PostHog versions
+        // getFlagVariants might not exist in all PostHog versions — onFeatureFlags covers it.
       }
     };
 

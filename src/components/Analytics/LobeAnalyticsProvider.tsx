@@ -12,6 +12,8 @@ import { BUSINESS_LINE } from '@/const/analytics';
 import { isDesktop } from '@/const/version';
 import { isDev } from '@/utils/env';
 
+import { installConsoleErrorForwarding } from './consoleErrorForwarding';
+
 type Props = {
   children: ReactNode;
   ga4Config: GoogleAnalyticsProviderConfig;
@@ -82,11 +84,11 @@ export const LobeAnalyticsProvider = memo(
             // Filter benign exceptions from PostHog error tracking
             // These are noise that pollute error dashboards without actionable value
             const benignPatterns = [
-              'ResizeObserver loop',          // Browser layout recalc noise
-              'signal is aborted',            // User navigated away during fetch
-              'zaloJSV2',                     // Zalo in-app browser injection
-              'zalo_h5_event_handler',        // Zalo WebView event handler
-              'Cannot prefetch',              // Next.js external URL prefetch
+              'ResizeObserver loop', // Browser layout recalc noise
+              'signal is aborted', // User navigated away during fetch
+              'zaloJSV2', // Zalo in-app browser injection
+              'zalo_h5_event_handler', // Zalo WebView event handler
+              'Cannot prefetch', // Next.js external URL prefetch
               'Attempted to assign to readonly property', // Safari strict mode quirk
             ];
             const origCapture = posthog.capture.bind(posthog);
@@ -102,6 +104,14 @@ export const LobeAnalyticsProvider = memo(
               }
               return origCapture(eventName, properties, options);
             };
+
+            // TASK 0: forward handled `console.error` calls to PostHog error
+            // tracking. `capture_exceptions` only autocaptures UNCAUGHT errors
+            // (window.onerror) + unhandled rejections; handled errors logged via
+            // console.error never became `$exception`. Routed through the wrapped
+            // `posthog.capture` above, so the benign-pattern filter applies and no
+            // double-capture occurs (we intentionally do NOT hook window.onerror).
+            installConsoleErrorForwarding(posthog);
 
             // Ensure properties are available for instant Feature Flag evaluation
             posthog.setPersonPropertiesForFlags({

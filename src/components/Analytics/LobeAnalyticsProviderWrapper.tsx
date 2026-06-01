@@ -24,6 +24,15 @@ export const LobeAnalyticsProviderWrapper = memo<Props>(({ children }) => {
         // ship with non-null payloads. Read these via `properties.$exception_list`
         // (array) — the legacy flat fields ($exception_type/_message/_stack)
         // were removed in PostHog JS ≥ 1.95.
+        //
+        // ⚠️ TASK 0: keep this a plain `true`. Boolean `true` enables ONLY
+        // capture_unhandled_errors + capture_unhandled_rejections; it leaves
+        // posthog-js's native `capture_console_errors` OFF. We forward console.error
+        // ourselves via installConsoleErrorForwarding() (LobeAnalyticsProvider) to
+        // tag `mechanism: 'console.error'` and keep a hook point for PII scrub/
+        // sampling. Do NOT switch this to an object that sets
+        // `capture_console_errors: true` while that helper is installed — the two
+        // would DOUBLE-CAPTURE every console.error. Pick one path, not both.
         capture_exceptions: true,
         capture_performance: { web_vitals: true },
         debug: analyticsEnv.DEBUG_POSTHOG_ANALYTICS,
