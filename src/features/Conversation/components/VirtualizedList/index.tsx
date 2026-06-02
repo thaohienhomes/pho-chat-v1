@@ -10,6 +10,7 @@ import { chatSelectors } from '@/store/chat/selectors';
 
 import AutoScroll from '../AutoScroll';
 import SkeletonList from '../SkeletonList';
+import Item from './Item';
 import { VirtuosoContext } from './VirtuosoContext';
 
 interface VirtualizedListProps {
@@ -69,6 +70,7 @@ const VirtualizedList = memo<VirtualizedListProps>(({ mobile, dataSource, itemCo
         atBottomStateChange={setAtBottom}
         atBottomThreshold={50 * (mobile ? 2 : 1)}
         components={{
+          Item,
           List,
         }}
         computeItemKey={(_, item) => item}
