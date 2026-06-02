@@ -774,6 +774,9 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       const billingTask = (async () => {
         let accumulatedText = '';
         let completed = false;
+        // PCFIX-4: time-to-first-token. Stamped on the first non-empty chunk so
+        // we can distinguish "stalled before first token" from "long stream".
+        let ttftMs: number | undefined;
 
         try {
           const reader = stream2.getReader();
@@ -782,6 +785,9 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
+            if (ttftMs === undefined && value && value.length > 0) {
+              ttftMs = Date.now() - requestStartTime;
+            }
             accumulatedText += decoder.decode(value, { stream: true });
           }
           completed = true;
@@ -831,6 +837,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                   planId: userPlanId,
                   provider: actualProviderUsed,
                   responseTimeMs,
+                  // PCFIX-4: TTFT (stream path only). Undefined if no chunk arrived before abort.
+                  ttftMs,
                 },
               );
             }
