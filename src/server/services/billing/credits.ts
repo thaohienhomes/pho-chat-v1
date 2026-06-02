@@ -114,6 +114,13 @@ export interface UsageLogParams {
   provider: string;
   responseTimeMs?: number;
   sessionId?: string;
+  /**
+   * PCFIX-4: time-to-first-token (ms) for streaming responses. Forwarded to
+   * PostHog as `$ai_ttft_ms` so we can tell "stalled before first token" (high
+   * TTFT) apart from "long stream" (low TTFT, high total). Undefined for
+   * non-streaming paths where the full response is buffered before metering.
+   */
+  ttftMs?: number;
 }
 
 /**
@@ -341,6 +348,7 @@ export async function processModelUsage(
         planId: usageLog.planId,
         provider: usageLog.provider,
         tier,
+        ttftMs: usageLog.ttftMs,
         userId,
       });
     }

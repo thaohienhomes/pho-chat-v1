@@ -40,6 +40,13 @@ export interface CaptureAiGenerationParams {
   provider: string;
   /** PHO-246: model tier (1/2/3) for cost-per-tier breakdowns. */
   tier?: number;
+  /**
+   * PCFIX-4: time-to-first-token in ms. Streaming paths set this when the first
+   * content chunk arrives; undefined for non-streaming / unmeasured calls.
+   * `$ai_latency_ms` (total wall-clock) minus this approximates stream duration,
+   * so we can tell "stalled before first token" from "long stream".
+   */
+  ttftMs?: number;
   userId: string;
 }
 
@@ -88,6 +95,8 @@ async function emitAiGeneration(params: CaptureAiGenerationParams): Promise<void
       $ai_output_tokens: params.outputTokens,
       $ai_partial: params.partial ?? false,
       $ai_provider: params.provider,
+      // PCFIX-4: time-to-first-token (stream paths). Undefined values are dropped by JSON.stringify.
+      $ai_ttft_ms: params.ttftMs,
       ...(params.costUSD !== undefined && { $ai_cost_usd: params.costUSD }),
       // PHO-246: cost-per-plan / cost-per-tier breakdowns.
       ...(planId !== undefined && { planId }),
