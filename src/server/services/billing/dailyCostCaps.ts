@@ -27,24 +27,50 @@ export interface DailyCostCap {
 
 const DEFAULT_CAPS: DailyCostCap = { tier1: 1, tier2: 0, tier3: 0 };
 
+// IMPORTANT: every plan in `PLAN_MODEL_ACCESS` (src/config/pricing.ts) MUST have
+// an entry here, kept in sync with that plan's `allowedTiers`:
+//   - a tier the plan is NOT allowed to use stays at 0 (blocked);
+//   - a tier the plan IS allowed to use MUST be > 0, otherwise the plan is
+//     silently blocked from it (cap === 0 means "deny").
+// Plans missing here fall back to DEFAULT_CAPS (tier2/3 = 0), which wrongly
+// blocks paid Tier 2 plans — the bug this complete table guards against. Values
+// are USD/day starting points and stay env-overridable via DAILY_CAP_{PLAN}_T{TIER}.
 const PLAN_CAPS: Record<string, DailyCostCap> = {
-  // Lifetime plans
+  // Global lifetime / premium — Tier 1 & 2 only (no Tier 3)
+  gl_lifetime: { tier1: 5, tier2: 10, tier3: 0 },
+
+  gl_premium: { tier1: 5, tier2: 10, tier3: 0 },
+
+  // Global standard — Tier 1 & 2 (30 T2 msgs/day)
+  gl_standard: { tier1: 3, tier2: 5, tier3: 0 },
+
+  // Free plans — Tier 1 only
+  gl_starter: { tier1: 1, tier2: 0, tier3: 0 },
+
+  // Lifetime deal plans — all tiers
   lifetime_early_bird: { tier1: 10, tier2: 10, tier3: 10 },
 
   lifetime_last_call: { tier1: 10, tier2: 10, tier3: 10 },
 
   lifetime_standard: { tier1: 10, tier2: 10, tier3: 10 },
 
-  // Promo / beta plans
   // PHO-238: T3 hard-blocked at $0 — medical_beta is FREE-tier and was burning $26/hr.
   // Defense-in-depth: also blocked via PLAN_MODEL_ACCESS.allowedTiers + dailyTier3Limit=0.
   medical_beta: { tier1: 5, tier2: 3, tier3: 0 },
 
+  // VN basic (Phở Tái) — Tier 1 & 2 (30 T2 msgs/day)
+  vn_basic: { tier1: 2, tier2: 3, tier3: 0 },
+
   vn_free: { tier1: 1, tier2: 0, tier3: 0 },
 
+  // VN subscription plans — all tiers
   vn_premium: { tier1: 5, tier2: 5, tier3: 5 },
-  // Subscription plans
+
   vn_pro: { tier1: 5, tier2: 5, tier3: 5 },
+
+  // VN team (pooled enterprise) — all tiers
+  vn_team: { tier1: 10, tier2: 10, tier3: 10 },
+
   vn_ultimate: { tier1: 10, tier2: 10, tier3: 10 },
 };
 
