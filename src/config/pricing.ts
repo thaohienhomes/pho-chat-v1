@@ -604,7 +604,11 @@ export const PLAN_MODEL_ACCESS: Record<string, PlanModelAccess> = {
   // VN_PLANS.medical_beta.dailyTier3Limit = 0 and dailyCostCaps.ts T3 = $0.
   medical_beta: {
     allowedTiers: [1, 2],
-    dailyLimits: { tier2: -1 },
+    // PHO cost audit (2026-06): medical_beta is a near-free promo. Tier 2 was
+    // unlimited and a single user burned ~$22/day on it, far above the intended
+    // $3/day USD cap (which can be slipped by a request-timing race or an env
+    // override). An atomic per-day message limit hard-bounds it. Tunable.
+    dailyLimits: { tier2: 30 },
     defaultModel: 'llama-3.1-8b-instant',
     defaultProvider: 'groq',
     models: [...TIER1_MODELS, ...TIER2_MODELS],
