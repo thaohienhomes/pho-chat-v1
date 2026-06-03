@@ -29,17 +29,27 @@ export const LobeVercelAIGatewayAI = createOpenAICompatibleRuntime({
   baseURL: 'https://ai-gateway.vercel.sh/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { model, reasoning_effort, verbosity, ...rest } = payload;
+      const { model, reasoning_effort, verbosity, enabledContextCaching = true, ...rest } = payload;
 
       const providerOptions: any = {};
-      if (reasoning_effort) {
-        providerOptions.openai = {
-          reasoningEffort: reasoning_effort,
-          reasoningSummary: 'auto'
-        };
+      // Enable Vercel AI Gateway automatic prompt caching. The gateway inserts
+      // cache_control markers on static prefixes (system prompt + earlier turns)
+      // for providers that support it (e.g. Anthropic), and is a no-op otherwise.
+      // This cuts input cost on long, repeated-prefix conversations.
+      // Respect the user's context-caching opt-out (defaults on), matching the
+      // native anthropic provider's `enabledContextCaching` behaviour.
+      if (enabledContextCaching) {
+        providerOptions.gateway = { caching: 'auto' };
       }
-      if (verbosity) {
-        providerOptions.openai.textVerbosity = verbosity;
+      if (reasoning_effort || verbosity) {
+        providerOptions.openai = {};
+        if (reasoning_effort) {
+          providerOptions.openai.reasoningEffort = reasoning_effort;
+          providerOptions.openai.reasoningSummary = 'auto';
+        }
+        if (verbosity) {
+          providerOptions.openai.textVerbosity = verbosity;
+        }
       }
 
       return {
