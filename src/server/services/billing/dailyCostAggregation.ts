@@ -100,6 +100,12 @@ export async function checkDailyCostCap(
 
   const dailyCostUsed = await getDailyTierCostUSD(userId, tier);
 
+  // Opt-in observability: flip DEBUG_COST_CAPS=1 to confirm in prod logs that this
+  // cap check actually runs for a given user/tier and what cap vs used it resolved.
+  if (process.env.DEBUG_COST_CAPS === '1') {
+    console.log('[billing] cost cap check', { dailyCostCap, dailyCostUsed, planId, tier, userId });
+  }
+
   if (dailyCostUsed >= dailyCostCap) {
     console.warn('[billing] DAILY CAP HIT', {
       dailyCostCap,
