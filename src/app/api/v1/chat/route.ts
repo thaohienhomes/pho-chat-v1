@@ -4,7 +4,15 @@ import { getApiModels, getModelCost, getValidModelIds } from '@/config/modelCata
 import { getModelTier } from '@/config/pricing';
 import { getServerDB } from '@/database/server';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import {
+  checkDailyRequestCap,
+  checkTierAccess,
+  getUserCreditBalance,
+} from '@/server/services/billing/credits';
+import { checkDailyCostCap } from '@/server/services/billing/dailyCostAggregation';
+import { getSecondsUntilMidnightVN } from '@/server/services/billing/dailyCostCaps';
 import { phoGatewayService } from '@/server/services/phoGateway';
+import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 
 export const maxDuration = 120;
 
@@ -202,6 +210,96 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
         },
       },
       { status: 400 },
+    );
+  }
+
+  // ── Plan / tier gating + daily cost guardrails (parity with web chat route) ──
+  // The public API previously bypassed checkTierAccess and the daily USD cost
+  // caps, letting any pho_ key call premium (Tier 2/3) models regardless of plan
+  // and with no daily ceiling. Mirror the web route's enforcement here. DB is the
+  // single source of truth for the plan (not users.currentPlanId).
+  const userPlanId = await getUserPlanIdFromDB(user.dbUserId);
+  const modelTier = getModelTier(model);
+
+  // Daily request cap (circuit breaker) — reuses tier counters, no extra query.
+  const creditStatus = await getUserCreditBalance(user.dbUserId);
+  if (creditStatus) {
+    const reqCap = checkDailyRequestCap(creditStatus, userPlanId);
+    if (!reqCap.allowed) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'daily_request_cap_reached',
+            daily_request_cap: reqCap.dailyRequestCap,
+            message: reqCap.reason || 'Daily request limit reached. Upgrade your plan.',
+          },
+        },
+        { headers: { 'Retry-After': String(getSecondsUntilMidnightVN()) }, status: 429 },
+      );
+    }
+  }
+
+  // Per-request input token cap by tier (~4 chars/token) — blocks single huge calls.
+  const INPUT_TOKEN_CAP_BY_TIER: Record<number, number> = { 1: 16_000, 2: 64_000, 3: 200_000 };
+  const tokenCap = INPUT_TOKEN_CAP_BY_TIER[modelTier] || 16_000;
+  const estimatedInputTokens = Math.ceil(
+    messages.reduce((acc: number, m: any) => acc + String(m?.content ?? '').length, 0) / 4,
+  );
+  if (estimatedInputTokens > tokenCap) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'input_too_long',
+          estimated_input_tokens: estimatedInputTokens,
+          input_token_cap: tokenCap,
+          message: `Input too long for this tier (~${estimatedInputTokens} tokens > ${tokenCap}). Shorten the prompt or upgrade your plan.`,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  // Daily USD cost cap per (user, plan, tier). reasonCode TIER_BLOCKED => the plan
+  // can't use this tier at all (403); DAILY_CAP_EXCEEDED => ceiling hit (429).
+  const usdCap = await checkDailyCostCap(user.dbUserId, userPlanId, modelTier);
+  if (!usdCap.allowed) {
+    const blockedByPlan = usdCap.reasonCode === 'TIER_BLOCKED';
+    return NextResponse.json(
+      {
+        error: {
+          code: blockedByPlan ? 'model_not_allowed_for_plan' : 'daily_cost_cap_reached',
+          daily_cost_cap: usdCap.dailyCostCap,
+          daily_cost_used: usdCap.dailyCostUsed,
+          message: usdCap.reason || 'Daily cost limit reached for this tier.',
+          tier: modelTier,
+        },
+      },
+      {
+        headers: blockedByPlan ? undefined : { 'Retry-After': String(getSecondsUntilMidnightVN()) },
+        status: blockedByPlan ? 403 : 429,
+      },
+    );
+  }
+
+  // Tier access + atomic daily-slot acquisition for Tier 2/3 (shared quota with web).
+  const tierAccess = await checkTierAccess(user.dbUserId, modelTier, userPlanId);
+  if (!tierAccess.allowed) {
+    // canUseTier=false / dailyLimit=0 => plan can't use this tier (403);
+    // otherwise the daily Tier 2/3 slot quota is exhausted (429).
+    const blockedByPlan = !tierAccess.dailyLimit;
+    return NextResponse.json(
+      {
+        error: {
+          code: blockedByPlan ? 'model_not_allowed_for_plan' : 'tier_quota_reached',
+          daily_limit: tierAccess.dailyLimit,
+          message: tierAccess.reason || 'This model requires a higher plan.',
+          tier: modelTier,
+        },
+      },
+      {
+        headers: blockedByPlan ? undefined : { 'Retry-After': String(getSecondsUntilMidnightVN()) },
+        status: blockedByPlan ? 403 : 429,
+      },
     );
   }
 
