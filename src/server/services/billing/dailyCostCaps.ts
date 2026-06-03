@@ -55,8 +55,11 @@ const PLAN_CAPS: Record<string, DailyCostCap> = {
   lifetime_standard: { tier1: 10, tier2: 10, tier3: 10 },
 
   // PHO-238: T3 hard-blocked at $0 — medical_beta is FREE-tier and was burning $26/hr.
-  // Defense-in-depth: also blocked via PLAN_MODEL_ACCESS.allowedTiers + dailyTier3Limit=0.
-  medical_beta: { tier1: 5, tier2: 3, tier3: 0 },
+  // 2026-06 cost audit: a medical_beta user still burned ~$22/day on Tier 2 (cap was $3
+  // but this USD cap is a timing-sensitive pre-read). Lowered T2 to $1/day; the real
+  // hard stop is the atomic 30-msg/day Tier 2 limit in PLAN_MODEL_ACCESS.medical_beta.
+  // Defense-in-depth: also blocked via allowedTiers + dailyTier3Limit=0.
+  medical_beta: { tier1: 5, tier2: 1, tier3: 0 },
 
   // VN basic (Phở Tái) — Tier 1 & 2 (30 T2 msgs/day)
   vn_basic: { tier1: 2, tier2: 3, tier3: 0 },
@@ -85,12 +88,32 @@ const PLAN_CAPS: Record<string, DailyCostCap> = {
  * Returns 0 when the tier is fully blocked for this plan. Callers MUST treat
  * `cap === 0` as "deny" rather than "no cap".
  */
+// Track which env overrides we've already logged so the warning below fires at
+// most once per (process, env key) instead of on every request.
+const loggedEnvOverrides = new Set<string>();
+
 export function getDailyCostCap(planId: string, tier: number): number {
   const envKey = `DAILY_CAP_${planId.toUpperCase()}_T${tier}`;
   const envVal = process.env[envKey];
   if (envVal !== undefined && envVal !== '') {
     const parsed = Number.parseFloat(envVal);
-    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      // Surface active env overrides once per process. A too-high override silently
+      // masking the static cap is the leading hypothesis for why the medical_beta
+      // $3 cap did not bite in the 2026-06 audit — make it visible in prod logs.
+      if (!loggedEnvOverrides.has(envKey)) {
+        loggedEnvOverrides.add(envKey);
+        const staticCaps = PLAN_CAPS[planId] ?? DEFAULT_CAPS;
+        const staticCap =
+          tier === 1 ? staticCaps.tier1 : tier === 2 ? staticCaps.tier2 : staticCaps.tier3;
+        console.warn('[billing] daily cost cap ENV OVERRIDE active', {
+          envKey,
+          overrideValue: parsed,
+          staticCap,
+        });
+      }
+      return parsed;
+    }
   }
 
   const caps = PLAN_CAPS[planId] ?? DEFAULT_CAPS;
