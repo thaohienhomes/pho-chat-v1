@@ -23,13 +23,14 @@ import { Pool } from 'pg';
 
 dotenv.config();
 
-// Stuck cohort from the 2026-06 PostHog auth-incident audit (clerk user ids = users.id).
+// Locked-out cohort from the auth incident (clerk user ids = users.id). Refreshed
+// 2026-06-07 from PostHog: these users had repeated auth_session_expired + 0
+// successful generations in the trailing 3 days. medical_beta / lifetime users
+// who recovered after a transient blip were intentionally dropped.
 const DEFAULT_USER_IDS = [
-  'user_3AAVrKnSm3HKlfMvkAFkMAStB9q', // 22 expiries / 0 usage — most severe
-  'user_3AHqbtQL7RbGor1LzSOS0EA2vj3', // nga.ntv@gmail.com
-  'user_3AIuA5YRnbI8BiPhPLcIYoQFN7q',
-  'user_3Avh1hwb5GKTg0MTiKh1nMtB5W8',
-  'user_3ABlxW8uM5sH9ACjH3mR4irdEDn',
+  'user_3AAVrKnSm3HKlfMvkAFkMAStB9q', // huyenvu27996@gmail.com — 10 expiries / 0 use, active today (worst)
+  'user_3AHqbtQL7RbGor1LzSOS0EA2vj3', // nga.ntv@gmail.com — vn_ultimate, 0 use
+  'user_3ATwWWyJPHHf5Wy8OkcLyAddhdX', // bshuyenks@gmail.com — 1 expiry / 0 use
 ];
 
 // Plans treated as free-tier when judging "paid but mis-flagged" desync.
