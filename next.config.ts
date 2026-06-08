@@ -551,6 +551,16 @@ const withBundleAnalyzer = process.env.ANALYZE === 'true' ? analyzer() : noWrapp
 const withPWA =
   isProd && !isDesktop
     ? withSerwistInit({
+        // Exclude /medical-beta-guide.html from the precache manifest. The file
+        // exists in public/ but its route resolves to a Next 404 at runtime, which
+        // POISONED precaching: every new service-worker install failed with
+        // `bad-precaching-response`, so clients never updated and stayed pinned to
+        // STALE JS. The stale client stopped attaching the Clerk session token →
+        // tRPC 401 + greyed model picker for logged-in paying users (the 2026-06
+        // auth incident; confirmed by incognito = no SW = works). `.map` and
+        // `manifest.js` are Serwist's default excludes, preserved here.
+        exclude: [/\.map$/, /^manifest.*\.js$/, /medical-beta-guide\.html$/],
+
         // Allow precaching of large PGLite assets for offline functionality
         // Reduced from 10MB to 5MB to optimize build memory usage on Vercel
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
