@@ -149,6 +149,19 @@ const nextConfig: NextConfig = {
         source: '/:path*',
       },
       {
+        // The service worker script must always be revalidated so clients pick up a
+        // new SW promptly (it carries the one-time stale-client recovery). Never let
+        // a CDN/browser pin an old sw.js — that is how clients get trapped on a stale
+        // bundle (the 2026-06 auth lockout).
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
+          },
+        ],
+        source: '/sw.js',
+      },
+      {
         headers: [
           {
             key: 'Cache-Control',
