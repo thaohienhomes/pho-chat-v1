@@ -6,6 +6,7 @@ import {
 } from '@lobechat/model-runtime';
 import { ChatErrorType } from '@lobechat/types';
 import { eq } from 'drizzle-orm';
+import { after } from 'next/server';
 import console from 'node:console';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
@@ -739,7 +740,16 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       // network drop) still debits the user for tokens already streamed. The
       // gateway has already charged us for those tokens; the previous silent
       // catch here let the user escape billing entirely.
-      (async () => {
+      //
+      // Read the audit stream CONCURRENTLY (so ReadableStream.tee() doesn't buffer
+      // the entire response body in memory), then hand the resulting promise to
+      // Next's `after()` so Vercel keeps the function — and the Neon WebSocket pool
+      // connection — alive until billing completes. Previously this was a bare
+      // fire-and-forget IIFE: the function froze the instant the response returned,
+      // severing the DB connection, so the post-stream billing query failed
+      // ("❌ Failed to process model usage: Failed query …") and silently skipped
+      // points deduction + usage logging on streamed chats.
+      const billingTask = (async () => {
         let accumulatedText = '';
         let completed = false;
 
@@ -807,6 +817,12 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           }
         }
       })();
+
+      // Keep the serverless function alive until billing resolves. Passing the
+      // already-running promise (not a deferred callback) means stream2 is consumed
+      // as it streams — no tee() buffering — while still surviving the post-response
+      // freeze that was severing the Neon connection mid-write.
+      after(billingTask);
 
       const headers = new Headers(response.headers);
       headers.set('X-Pho-Provider', actualProviderUsed);
