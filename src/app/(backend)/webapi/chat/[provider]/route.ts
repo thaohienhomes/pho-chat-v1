@@ -6,6 +6,7 @@ import {
 } from '@lobechat/model-runtime';
 import { ChatErrorType } from '@lobechat/types';
 import { eq } from 'drizzle-orm';
+import { after } from 'next/server';
 import console from 'node:console';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
@@ -739,7 +740,14 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       // network drop) still debits the user for tokens already streamed. The
       // gateway has already charged us for those tokens; the previous silent
       // catch here let the user escape billing entirely.
-      (async () => {
+      //
+      // Run via Next's `after()` so Vercel keeps the function — and the Neon
+      // WebSocket pool connection — alive until billing completes. Previously this
+      // was a bare fire-and-forget IIFE: the function froze the instant the
+      // response was returned, severing the DB connection, so the post-stream
+      // billing query failed ("❌ Failed to process model usage: Failed query …")
+      // and silently skipped points deduction + usage logging on streamed chats.
+      after(async () => {
         let accumulatedText = '';
         let completed = false;
 
@@ -806,7 +814,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
             console.error('[Chat API] Billing failed after stream:', billingError);
           }
         }
-      })();
+      });
 
       const headers = new Headers(response.headers);
       headers.set('X-Pho-Provider', actualProviderUsed);
