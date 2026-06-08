@@ -125,10 +125,10 @@
     ]
   },
   "resolutions": {
-    "@xmldom/xmldom": "0.9.8"
+    "@xmldom/xmldom": "0.8.10"
   },
   "overrides": {
-    "@xmldom/xmldom": "0.9.8",
+    "@xmldom/xmldom": "0.8.10",
     "mdast-util-gfm-autolink-literal": "2.0.0"
   },
   "dependencies": {
@@ -402,7 +402,7 @@
       "pngquant-bin"
     ],
     "overrides": {
-      "@xmldom/xmldom": "0.9.8",
+      "@xmldom/xmldom": "0.8.10",
       "mdast-util-gfm-autolink-literal": "2.0.0"
     }
   }

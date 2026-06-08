@@ -22,7 +22,7 @@ describe('naive crawler', () => {
     vi.clearAllMocks();
   });
 
-  it('should return undefined for normal pages (due to cloudflare logic)', async () => {
+  it('should return content for a normal (non-blocked) page', async () => {
     const mockResponse = {
       status: 200,
       headers: new Map([['content-type', 'text/html']]),
@@ -34,8 +34,8 @@ describe('naive crawler', () => {
 
     const { htmlToMarkdown } = await import('../../utils/htmlToMarkdown');
     vi.mocked(htmlToMarkdown).mockReturnValue({
-      content: 'Test content'.padEnd(101, ' '), // Ensure length > 100
-      title: 'Normal Page Title', // Not "Just a moment..." so it returns undefined
+      content: 'Test content'.padEnd(101, ' '), // length > 100 so it isn't filtered as "too short"
+      title: 'Normal Page Title', // not a WAF/challenge title → the real content is returned
       description: 'Test description',
       siteName: 'Test Site',
       length: 101,
@@ -43,7 +43,15 @@ describe('naive crawler', () => {
 
     const result = await naive('https://example.com', { filterOptions: {} });
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual({
+      content: 'Test content'.padEnd(101, ' '),
+      contentType: 'text',
+      description: 'Test description',
+      length: 101,
+      siteName: 'Test Site',
+      title: 'Normal Page Title',
+      url: 'https://example.com',
+    });
   });
 
   it('should successfully crawl JSON content', async () => {
@@ -116,7 +124,7 @@ describe('naive crawler', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should return content when NOT blocked by Cloudflare', async () => {
+  it('should return undefined for a Cloudflare challenge page', async () => {
     const mockResponse = {
       status: 200,
       headers: new Map([['content-type', 'text/html']]),
@@ -129,7 +137,7 @@ describe('naive crawler', () => {
     const { htmlToMarkdown } = await import('../../utils/htmlToMarkdown');
     vi.mocked(htmlToMarkdown).mockReturnValue({
       content: 'Test content'.padEnd(101, ' '),
-      title: 'Just a moment...', // Cloudflare blocking page - this will cause return
+      title: 'Just a moment...', // WAF/Cloudflare challenge title → crawler returns undefined to defer
       description: 'Test description',
       siteName: 'Test Site',
       length: 101,
@@ -137,15 +145,7 @@ describe('naive crawler', () => {
 
     const result = await naive('https://example.com', { filterOptions: {} });
 
-    expect(result).toEqual({
-      content: 'Test content'.padEnd(101, ' '),
-      contentType: 'text',
-      description: 'Test description',
-      length: 101,
-      siteName: 'Test Site',
-      title: 'Just a moment...',
-      url: 'https://example.com',
-    });
+    expect(result).toBeUndefined();
   });
 
   it('should throw PageNotFoundError for 404 status', async () => {

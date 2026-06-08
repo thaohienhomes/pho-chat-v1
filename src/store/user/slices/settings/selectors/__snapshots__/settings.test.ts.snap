@@ -51,41 +51,44 @@ exports[`settingsSelectors > currentSettings > should merge DEFAULT_SETTINGS and
 exports[`settingsSelectors > currentSystemAgent > should merge DEFAULT_SYSTEM_AGENT_CONFIG and s.settings.systemAgent correctly 1`] = `
 {
   "agentMeta": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "enableAutoReply": true,
   "generationTopic": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "historyCompress": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "queryRewrite": {
     "enabled": true,
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "replyMessage": "Custom auto reply",
   "thread": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "topic": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
   "translation": {
-    "model": "gpt-5-mini",
-    "provider": "openai",
+    "model": "gemini-2.5-flash",
+    "provider": "vertexai",
   },
 }
 `;
 
 exports[`settingsSelectors > currentTTS > should merge DEFAULT_TTS_CONFIG and s.settings.tts correctly 1`] = `
 {
+  "elevenlabs": {
+    "modelId": "eleven_multilingual_v2",
+  },
   "openAI": {
     "sttModel": "whisper-2",
     "ttsModel": "tts-1",
@@ -116,8 +119,8 @@ exports[`settingsSelectors > defaultAgent > should merge DEFAULT_AGENT and s.set
       "historyCount": 20,
       "reasoningBudgetToken": 1024,
       "searchFCModel": {
-        "model": "gpt-5-mini",
-        "provider": "openai",
+        "model": "gemini-2.5-flash",
+        "provider": "vertexai",
       },
       "searchMode": "off",
     },
@@ -130,7 +133,7 @@ exports[`settingsSelectors > defaultAgent > should merge DEFAULT_AGENT and s.set
       "top_p": 1,
     },
     "plugins": [],
-    "provider": "openai",
+    "provider": "vertexai",
     "systemRole": "user",
     "tts": {
       "showAllLocaleVoice": false,
@@ -161,8 +164,8 @@ exports[`settingsSelectors > defaultAgentConfig > should merge DEFAULT_AGENT_CON
     "historyCount": 20,
     "reasoningBudgetToken": 1024,
     "searchFCModel": {
-      "model": "gpt-5-mini",
-      "provider": "openai",
+      "model": "gemini-2.5-flash",
+      "provider": "vertexai",
     },
     "searchMode": "off",
   },
@@ -175,7 +178,7 @@ exports[`settingsSelectors > defaultAgentConfig > should merge DEFAULT_AGENT_CON
     "top_p": 1,
   },
   "plugins": [],
-  "provider": "openai",
+  "provider": "vertexai",
   "systemRole": "custom role",
   "tts": {
     "showAllLocaleVoice": false,
