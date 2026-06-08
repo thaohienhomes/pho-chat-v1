@@ -1,11 +1,14 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import useSWR from 'swr';
 
 import { getModelTier } from '@/config/pricing';
+import { silentRefresh } from '@/libs/trpc/client/authRecovery';
 
 interface AllowedModelsData {
   allowedModels: string[];
   allowedTiers: number[];
+  /** True when the server fell back to vn_free because a signed-in session failed verification. */
+  authError?: boolean;
   dailyLimits?: Record<string, number>;
   defaultModel: string;
   defaultProvider: string;
@@ -45,7 +48,7 @@ const fetchUsageStats = async (): Promise<UsageStatsData | null> => {
  * Also fetches daily usage stats to enforce daily quota limits client-side.
  */
 export const useModelAccess = () => {
-  const { data, isLoading } = useSWR('model-access-allowed', fetchModelAccess, {
+  const { data, isLoading, mutate } = useSWR('model-access-allowed', fetchModelAccess, {
     dedupingInterval: 300_000, // 5 minutes — don't refetch within this window
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
@@ -56,6 +59,22 @@ export const useModelAccess = () => {
     revalidateOnFocus: true,
     revalidateOnReconnect: false,
   });
+
+  // The endpoint flags `authError` when a signed-in client's session failed
+  // server verification and it fell back to vn_free — which would grey out
+  // PRO/FLAGSHIP for a paid user as if they lost their plan. Attempt a one-shot
+  // silent token refresh and revalidate so a recoverable session self-heals and
+  // the models un-grey, instead of showing a misleading "not authorized" state.
+  // Hard failures (kid/instance mismatch) are escalated to re-auth by the tRPC
+  // layer; we deliberately don't redirect from here.
+  const recoveryAttempted = useRef(false);
+  useEffect(() => {
+    if (!data?.authError || recoveryAttempted.current) return;
+    recoveryAttempted.current = true;
+    void silentRefresh().then((refreshed) => {
+      if (refreshed) void mutate();
+    });
+  }, [data?.authError, mutate]);
 
   const allowedTiers = data?.allowedTiers ?? [1];
   const isGuest = !data;
@@ -99,6 +118,9 @@ export const useModelAccess = () => {
 
   return {
     allowedTiers,
+    // Surface broken-session state so UIs can prompt re-login instead of
+    // rendering greyed models as if it were a plan/upgrade limit.
+    authError: data?.authError ?? false,
     canUseModel,
     canUseTier,
     isGuest,

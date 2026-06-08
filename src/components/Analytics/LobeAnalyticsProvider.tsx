@@ -85,6 +85,7 @@ export const LobeAnalyticsProvider = memo(
             // These are noise that pollute error dashboards without actionable value
             const benignPatterns = [
               'ResizeObserver loop', // Browser layout recalc noise
+              'Zero-sized element', // react-virtuoso benign layout warning via console.error — 56+ events/user buried real UNAUTHORIZED errors in the 2026-06 auth audit
               'signal is aborted', // User navigated away during fetch
               'zaloJSV2', // Zalo in-app browser injection
               'zalo_h5_event_handler', // Zalo WebView event handler

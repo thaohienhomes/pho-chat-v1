@@ -5,6 +5,7 @@
  * GET /api/subscription/models/allowed - Get allowed models for current user
  */
 import { auth } from '@clerk/nextjs/server';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 import { PLAN_MODEL_ACCESS, getAllowedTiersForPlan } from '@/config/pricing';
@@ -20,6 +21,8 @@ interface AllowedModelsResponse {
   data?: {
     allowedModels: string[];
     allowedTiers: number[];
+    /** True when a signed-in client's session token failed server verification (broken auth, not a real free user). */
+    authError?: boolean;
     dailyLimits?: Record<string, number>;
     defaultModel: string;
     defaultProvider: string;
@@ -94,10 +97,27 @@ export async function GET(): Promise<NextResponse<AllowedModelsResponse>> {
     if (!userId) {
       const planCode = 'vn_free';
 
+      // Distinguish a genuinely logged-out visitor from a signed-in user whose
+      // session token the server could NOT verify (the auth-incident failure
+      // mode: Clerk `__client_uat` says signed-in but `auth()` yields no userId
+      // → kid/instance mismatch or JWKS rotation lag). Without this signal a PAID
+      // user with a broken session is silently served vn_free, so the picker
+      // greys out PRO/FLAGSHIP and they think they lost their plan (2026-06
+      // incident: nga.ntv@gmail.com on vn_ultimate). The client reads `authError`
+      // to self-heal the session / prompt re-login instead of misreporting it as
+      // a plan limit. Cookie names may carry an instance suffix (satellite apps).
+      const cookieStore = await cookies();
+      const hasBrokenClerkSession = cookieStore.getAll().some((c) => {
+        if (c.name === '__client_uat' || c.name.startsWith('__client_uat_')) return c.value !== '0';
+        if (c.name === '__session' || c.name.startsWith('__session_')) return !!c.value;
+        return false;
+      });
+
       return NextResponse.json({
         data: {
           allowedModels: PLAN_MODEL_ACCESS.vn_free.models,
           allowedTiers: getAllowedTiersForPlan(planCode),
+          authError: hasBrokenClerkSession || undefined,
           dailyLimits: PLAN_MODEL_ACCESS.vn_free.dailyLimits,
           defaultModel: PLAN_MODEL_ACCESS.vn_free.defaultModel,
           defaultProvider: PLAN_MODEL_ACCESS.vn_free.defaultProvider,

@@ -16,6 +16,7 @@ import {
   useEnabledChatModels,
 } from '@/hooks/useEnabledChatModels';
 import { useModelAccess } from '@/hooks/useModelAccess';
+import { forceReauth } from '@/libs/trpc/client/authRecovery';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/slices/chat';
 
@@ -460,7 +461,7 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
   const model = useAgentStore((s) => agentSelectors.currentAgentModel(s));
   const updateAgentConfig = useAgentStore((s) => s.updateAgentConfig);
   const tiers = useEnabledChatModels() as TierGroup[];
-  const { canUseTier: canUse } = useModelAccess();
+  const { authError, canUseTier: canUse } = useModelAccess();
   const [q, setQ] = useState('');
 
   /* ── internal open state ── */
@@ -504,6 +505,33 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
 
   const handleLockedModelClick = useCallback(
     (modelId: string, displayName: string) => {
+      // A broken session (server couldn't verify the token) makes the picker
+      // think the user is free-tier and greys out PRO/FLAGSHIP. Don't mislead a
+      // paying user with an "upgrade" prompt — surface the real cause (expired
+      // session) and offer re-login instead. See useModelAccess / models/allowed.
+      if (authError) {
+        const sessionKey = `session-expired-${Date.now()}`;
+        notification.warning({
+          btn: (
+            <Button
+              onClick={() => {
+                notification.destroy(sessionKey);
+                forceReauth();
+              }}
+              size="small"
+              type="primary"
+            >
+              {t('ModelSwitchPanel.loginButton')}
+            </Button>
+          ),
+          description: t('ModelSwitchPanel.sessionExpiredDescription'),
+          duration: 8,
+          key: sessionKey,
+          message: t('ModelSwitchPanel.sessionExpiredTitle'),
+        });
+        return;
+      }
+
       const tier = getModelTier(modelId);
       const tierLabel = tier === 3 ? 'Flagship' : 'Professional';
       const key = `locked-model-${Date.now()}`;
@@ -526,7 +554,7 @@ const ModelSwitchPanel = memo<IProps>(({ children, onOpenChange, open: extOpen }
         message: t('ModelSwitchPanel.upgradeTitle', { modelName: displayName }),
       });
     },
-    [router, t],
+    [authError, router, t],
   );
 
   /* ── quota hint color ── */

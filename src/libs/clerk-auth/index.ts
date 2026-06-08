@@ -26,6 +26,24 @@ export class ClerkAuth {
         const clerkAuth = requestState.toAuth();
         const userId = this.getMappedUserId(clerkAuth?.userId ?? null);
 
+        // PHO auth incident (2026-06): a growing cohort gets tRPC UNAUTHORIZED +
+        // a greyed model picker because the server cannot verify their session
+        // token. authenticateRequest() carries the precise cause in `reason`
+        // (e.g. token-invalid-signature → key/instance mismatch; token-expired;
+        // token-not-active-yet → clock skew). Surface REJECTED tokens (a token
+        // was sent but failed) — not plain anonymous traffic — so the root cause
+        // is greppable in Vercel logs instead of hiding behind a generic 401.
+        if (!userId) {
+          const reason = (requestState as any)?.reason as string | undefined;
+          if (reason && !reason.includes('missing')) {
+            console.warn('[ClerkAuth] session token rejected', {
+              message: (requestState as any)?.message,
+              reason,
+              status: (requestState as any)?.status,
+            });
+          }
+        }
+
         return { clerkAuth, userId };
       } catch (error) {
         console.warn('[ClerkAuth] authenticateRequest failed, falling back to auth():', error);
