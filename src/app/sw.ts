@@ -50,11 +50,20 @@ self.addEventListener('activate', (event) => {
         type: 'window',
       });
       await Promise.all(
-        windows.map((client) =>
-          'navigate' in client
-            ? (client as WindowClient).navigate(client.url).catch(() => {})
-            : Promise.resolve(),
-        ),
+        windows.map(async (client) => {
+          // Only window clients can navigate. Narrow structurally with an inline
+          // type instead of naming the `WindowClient` lib type, which the service
+          // worker eslint env flags as `no-undef`. Log (don't swallow) failures so
+          // a broken forced-reload is diagnosable.
+          if (!('navigate' in client)) return;
+          try {
+            await (client as unknown as { navigate: (url: string) => unknown }).navigate(
+              client.url,
+            );
+          } catch (error) {
+            console.error('[sw] forced client reload failed for', client.url, error);
+          }
+        }),
       );
     })(),
   );
