@@ -322,9 +322,24 @@ const clerkAuthMiddleware = clerkMiddleware(
 
       return response;
     } catch (error) {
-      logClerk('Clerk middleware error: %O', error);
-      console.error('Clerk middleware error:', error);
-      // Re-throw to let Clerk handle the error (e.g., redirect to login)
+      // Next.js signals 404 (notFound) and redirects by THROWING a control-flow
+      // "error" carrying a `digest` like `NEXT_HTTP_ERROR_FALLBACK;404` or
+      // `NEXT_REDIRECT;...`. These are expected outcomes — e.g. an unauthenticated
+      // user hitting a protected route (auth.protect() → redirect to /login), or a
+      // request for a non-existent page (/medical-beta-guide.html → 404). Logging
+      // them as errors floods the dashboard (~20+/8h) and buries real failures.
+      // Re-throw them silently so Next/Clerk handle them normally; only log genuine errors.
+      const digest = (error as { digest?: unknown } | null)?.digest;
+      const isNextControlFlow =
+        typeof digest === 'string' &&
+        (digest.startsWith('NEXT_REDIRECT') ||
+          digest.startsWith('NEXT_HTTP_ERROR_FALLBACK') ||
+          digest.startsWith('NEXT_NOT_FOUND'));
+      if (!isNextControlFlow) {
+        logClerk('Clerk middleware error: %O', error);
+        console.error('Clerk middleware error:', error);
+      }
+      // Re-throw to let Clerk/Next handle the error (e.g., redirect to login, render 404)
       throw error;
     }
   },

@@ -26,20 +26,26 @@ export class ClerkAuth {
         const clerkAuth = requestState.toAuth();
         const userId = this.getMappedUserId(clerkAuth?.userId ?? null);
 
-        // PHO auth incident (2026-06): a growing cohort gets tRPC UNAUTHORIZED +
-        // a greyed model picker because the server cannot verify their session
-        // token. authenticateRequest() carries the precise cause in `reason`
-        // (e.g. token-invalid-signature → key/instance mismatch; token-expired;
-        // token-not-active-yet → clock skew). Surface REJECTED tokens (a token
-        // was sent but failed) — not plain anonymous traffic — so the root cause
-        // is greppable in Vercel logs instead of hiding behind a generic 401.
+        // PHO auth incident (2026-06): signed-in users get tRPC UNAUTHORIZED. The
+        // server-side cause is in authenticateRequest()'s `reason`. We log it ONLY
+        // when the client actually carries a Clerk cookie (__client_uat / __session)
+        // yet we resolved NO user — i.e. a signed-in client whose token was
+        // missing/expired/invalid (the incident), excluding genuine anonymous
+        // traffic. An earlier version filtered out `*-missing` reasons, but Vercel
+        // showed no logs at all during a reproduced 401 — meaning the failure mode
+        // IS a missing/absent token reaching the server (client/SW not sending it),
+        // not a signature/version mismatch. Capture it explicitly.
         if (!userId) {
-          const reason = (requestState as any)?.reason as string | undefined;
-          if (reason && !reason.includes('missing')) {
-            console.warn('[ClerkAuth] session token rejected', {
+          const cookieHeader = request.headers?.get?.('cookie') ?? '';
+          const uat = /(?:^|;\s*)__client_uat=([^;]*)/.exec(cookieHeader)?.[1];
+          const hasClerkCookie =
+            (uat !== undefined && uat !== '0') || /(?:^|;\s*)__session=/.test(cookieHeader);
+          if (hasClerkCookie) {
+            console.warn('[ClerkAuth] signed-in client but no userId resolved', {
               message: (requestState as any)?.message,
-              reason,
+              reason: (requestState as any)?.reason,
               status: (requestState as any)?.status,
+              uat,
             });
           }
         }
