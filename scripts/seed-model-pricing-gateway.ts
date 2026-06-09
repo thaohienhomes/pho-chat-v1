@@ -140,7 +140,11 @@ async function seed() {
             outputCostPer1M: outputPts,
             tier: s.tier,
           },
-          target: modelPricing.id,
+          // Conflict on model_id (the unique business key the chat route looks
+          // up), NOT id. A model can already exist under a different id from the
+          // un-prefixed PR #24 seed (e.g. 'gemini-2.5-flash'); conflicting on id
+          // would hit the model_pricing_model_id_unique constraint and abort.
+          target: modelPricing.modelId,
         });
 
       console.log(
