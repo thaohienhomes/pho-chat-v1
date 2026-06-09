@@ -5,7 +5,7 @@
 -- Conversion: USD/1M tokens × 25,000 = points/1M tokens
 -- Rates verified 2026-05-02 from official provider docs.
 --
--- Verify:   SELECT count(*) FROM model_pricing WHERE id LIKE 'seed_gateway_%';  -- expect 13
+-- Verify:   SELECT count(*) FROM model_pricing WHERE id LIKE 'seed_gateway_%';  -- expect 18
 -- Rollback: DELETE FROM model_pricing WHERE id LIKE 'seed_gateway_%';
 
 INSERT INTO model_pricing
@@ -27,8 +27,19 @@ VALUES
   -- Tier 3 — mirrors of PR #24
   ('seed_gateway_openai_gpt-5.4',                         'openai/gpt-5.4',                         62500,   375000, 0, 0, 0, 3, true),
   ('seed_gateway_google_gemini-3.1-pro-preview',          'google/gemini-3.1-pro-preview',          50000,   300000, 0, 0, 0, 3, true),
-  ('seed_gateway_anthropic_claude-opus-4.6',              'anthropic/claude-opus-4.6',              125000,  625000, 0, 0, 0, 3, true)
-ON CONFLICT (id) DO UPDATE SET
+  ('seed_gateway_anthropic_claude-opus-4.6',              'anthropic/claude-opus-4.6',              125000,  625000, 0, 0, 0, 3, true),
+  -- PHO-287 cost-leak fix: active-but-unseeded gateway IDs (billed ~0 + bypassed
+  -- the daily USD cap). claude-sonnet-4.6 alone leaked $102 over 30 days.
+  ('seed_gateway_anthropic_claude-sonnet-4.6',            'anthropic/claude-sonnet-4.6',            75000,   375000, 0, 0, 0, 2, true),
+  ('seed_gateway_claude-sonnet-4-20250514',               'claude-sonnet-4-20250514',               75000,   375000, 0, 0, 0, 2, true),
+  ('seed_gateway_openai_gpt-5.3-codex',                   'openai/gpt-5.3-codex',                   43750,   350000, 0, 0, 0, 2, true),
+  ('seed_gateway_deepseek_deepseek-r1',                   'deepseek/deepseek-r1',                   13750,   54750,  0, 0, 0, 2, true),
+  -- Un-prefixed legacy ID still reaches getModelPricing() on some routes.
+  ('seed_gateway_gemini-2.5-flash',                       'gemini-2.5-flash',                       7500,    62500,  0, 0, 0, 1, true)
+-- Conflict on model_id (the unique business key the route looks up), NOT id:
+-- a model can already exist under a different id from the un-prefixed PR #24
+-- seed, which would trip model_pricing_model_id_unique if we arbitrated on id.
+ON CONFLICT (model_id) DO UPDATE SET
   input_cost_per_1m = EXCLUDED.input_cost_per_1m,
   output_cost_per_1m = EXCLUDED.output_cost_per_1m,
   tier = EXCLUDED.tier,
