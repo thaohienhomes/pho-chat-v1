@@ -10,7 +10,7 @@ import { after } from 'next/server';
 import console from 'node:console';
 
 import { checkAuth } from '@/app/(backend)/middleware/auth';
-import { MODEL_TIERS, getModelTier } from '@/config/pricing';
+import { getModelTier } from '@/config/pricing';
 import { modelPricing } from '@/database/schemas';
 import { getServerDB } from '@/database/server';
 import { createTraceOptions, initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
@@ -72,6 +72,21 @@ export const maxDuration = 300;
 //     console.error('Failed to track usage:', error);
 //   }
 // }
+
+// Conservative fail-safe pricing for models with NO `model_pricing` DB row.
+// Points/1M tokens, where points = USD/1M × 25_000 (1 pt ≈ $0.00004, the seed
+// ratio in scripts/seed-model-pricing-gateway.ts). Rates are pinned to roughly
+// the MOST EXPENSIVE model in each tier so an un-seeded model is billed ~its
+// real cost instead of leaking. PHO cost-leak fix (2026-06): the previous
+// fallback used MODEL_TIERS rates (100/300 pts ≈ $0.004/$0.012 per 1M), ~800x
+// below real flagship cost — every un-seeded model (e.g. claude-sonnet-4.6,
+// $102 real / $0.12 billed over 30 days) was effectively free AND uncapped,
+// because the daily USD cap reads usage_logs.cost_usd derived from these rates.
+const FALLBACK_TIER_PRICING_POINTS: Record<number, { inputCostPer1M: number; outputCostPer1M: number }> = {
+  1: { inputCostPer1M: 31_250, outputCostPer1M: 250_000 }, // ~$1.25 / $10 per 1M
+  2: { inputCostPer1M: 75_000, outputCostPer1M: 375_000 }, // ~$3 / $15 per 1M
+  3: { inputCostPer1M: 125_000, outputCostPer1M: 625_000 }, // ~$5 / $25 per 1M
+};
 
 async function getModelPricing(modelId: string) {
   try {
@@ -702,21 +717,28 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
 
     // Resolve correct tier via getModelTier()
     const resolvedTier = getModelTier(actualModelUsed);
-    const resolvedTierConfig = MODEL_TIERS[resolvedTier as keyof typeof MODEL_TIERS];
 
-    // Use DB pricing if available, otherwise derive from MODEL_TIERS config.
-    // PHO-223: align fallback field names with DB schema (input_cost_per_1m / output_cost_per_1m).
-    // Both DB rows and MODEL_TIERS values are points/1M tokens — consistent unit.
+    // Use DB pricing if available; otherwise fall back to a CONSERVATIVE-HIGH
+    // per-tier rate (≈ the priciest model in the tier) so an un-seeded model is
+    // billed near its real cost and the daily USD cap still fires. Do NOT use
+    // MODEL_TIERS rates here — those are legacy points-per-message estimates
+    // (100/300 pts/1M ≈ $0.004/$0.012), ~800x below real flagship cost, which
+    // is exactly the leak this fallback guards against.
+    const fallbackPricing =
+      FALLBACK_TIER_PRICING_POINTS[resolvedTier] ?? FALLBACK_TIER_PRICING_POINTS[2];
     const activePricing = pricing || {
       id: 'default',
-      inputCostPer1M: resolvedTierConfig?.inputCostPer1M ?? 100,
-      outputCostPer1M: resolvedTierConfig?.outputCostPer1M ?? 300,
+      inputCostPer1M: fallbackPricing.inputCostPer1M,
+      outputCostPer1M: fallbackPricing.outputCostPer1M,
       tier: resolvedTier,
     };
 
     if (!pricing) {
+      // Loud signal so missing models get seeded promptly (grep Vercel logs).
       console.warn(
-        `⚠️ No DB pricing for model ${data.model}, using Tier ${resolvedTier} fallback (${resolvedTierConfig?.tierName}).`,
+        `⚠️ [billing] NO DB pricing for "${actualModelUsed}" (tier ${resolvedTier}) — ` +
+          `billing at conservative fallback ${fallbackPricing.inputCostPer1M}/${fallbackPricing.outputCostPer1M} pts/1M. ` +
+          `Add it to scripts/seed-model-pricing-gateway.ts and re-seed.`,
       );
     }
 

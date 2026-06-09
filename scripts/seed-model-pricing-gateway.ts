@@ -28,7 +28,7 @@
  *   - DeepSeek:  https://api-docs.deepseek.com/quick_start/pricing
  *
  * Run:      bunx tsx scripts/seed-model-pricing-gateway.ts
- * Verify:   SELECT count(*) FROM model_pricing WHERE id LIKE 'seed_gateway_%';  -- expect 13
+ * Verify:   SELECT count(*) FROM model_pricing WHERE id LIKE 'seed_gateway_%';  -- expect 18
  * Rollback: DELETE FROM model_pricing WHERE id LIKE 'seed_gateway_%';
  */
 import dotenv from 'dotenv';
@@ -84,6 +84,20 @@ const SEEDS: PricingSeed[] = [
   { inputUsdPer1M: 1.25, modelId: 'google/gemini-2.5-pro', outputUsdPer1M: 10, tier: 2 },
   { inputUsdPer1M: 1.75, modelId: 'openai/gpt-5.3', outputUsdPer1M: 14, tier: 2 },
   { inputUsdPer1M: 3, modelId: 'anthropic/claude-sonnet-4.5', outputUsdPer1M: 15, tier: 2 },
+
+  // PHO cost-leak fix (2026-06): these gateway IDs were ACTIVE in production but
+  // ABSENT from this seed, so getModelPricing() fell back to the MODEL_TIERS
+  // default (100/300 pts ≈ $0.004/$0.012 per 1M) — ~800x under the real rate.
+  // PostHog 30-day data: claude-sonnet-4.6 alone billed $0.12 vs $102 real cost,
+  // and the daily USD cap (which reads usage_logs.cost_usd) never fired because
+  // the recorded cost was ~0. modelIds below are the EXACT $ai_model strings
+  // observed in telemetry so the exact-match lookup at route.ts hits.
+  { inputUsdPer1M: 3, modelId: 'anthropic/claude-sonnet-4.6', outputUsdPer1M: 15, tier: 2 },
+  { inputUsdPer1M: 3, modelId: 'claude-sonnet-4-20250514', outputUsdPer1M: 15, tier: 2 },
+  { inputUsdPer1M: 1.75, modelId: 'openai/gpt-5.3-codex', outputUsdPer1M: 14, tier: 2 },
+  { inputUsdPer1M: 0.55, modelId: 'deepseek/deepseek-r1', outputUsdPer1M: 2.19, tier: 2 },
+  // Un-prefixed legacy IDs still reach getModelPricing() on some routes.
+  { inputUsdPer1M: 0.3, modelId: 'gemini-2.5-flash', outputUsdPer1M: 2.5, tier: 1 },
 
   // ============================================================================
   // Tier 3 — Premium / Expensive tier
