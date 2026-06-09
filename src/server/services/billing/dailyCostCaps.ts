@@ -55,11 +55,14 @@ const PLAN_CAPS: Record<string, DailyCostCap> = {
   lifetime_standard: { tier1: 10, tier2: 10, tier3: 10 },
 
   // PHO-238: T3 hard-blocked at $0 — medical_beta is FREE-tier and was burning $26/hr.
-  // 2026-06 cost audit: a medical_beta user still burned ~$22/day on Tier 2 (cap was $3
-  // but this USD cap is a timing-sensitive pre-read). Lowered T2 to $1/day; the real
-  // hard stop is the atomic 30-msg/day Tier 2 limit in PLAN_MODEL_ACCESS.medical_beta.
-  // Defense-in-depth: also blocked via allowedTiers + dailyTier3Limit=0.
-  medical_beta: { tier1: 5, tier2: 1, tier3: 0 },
+  // 2026-06 cost audit (PHO-287): the "~$22/day on Tier 2" burn that forced the
+  // emergency $1 cap was NOT really a cap-value problem — it was the un-seeded-model
+  // leak. claude-sonnet-4.6 had no model_pricing row, so it billed ~$0 and this USD
+  // cap (which reads usage_logs.cost_usd) never saw the real spend. With that leak
+  // fixed (seed + conservative fallback in the chat route), the USD cap is meaningful
+  // again, so T2 is raised back to $3/day to unblock legit medical_beta usage.
+  // Backstops still in place: atomic 30-msg/day Tier 2 limit + allowedTiers + T3=$0.
+  medical_beta: { tier1: 5, tier2: 3, tier3: 0 },
 
   // VN basic (Phở Tái) — Tier 1 & 2 (30 T2 msgs/day)
   vn_basic: { tier1: 2, tier2: 3, tier3: 0 },
