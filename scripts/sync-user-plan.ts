@@ -93,6 +93,7 @@ interface Args {
   user?: string;
 }
 
+/** Parse CLI flags (`--scan`, `--scan-clerk`, `--dedupe-subs`, `--user`, `--plan`, `--apply`, `--force`) into an Args object. */
 function parseArgs(argv: string[]): Args {
   const args: Args = { apply: false, dedupeSubs: false, force: false, scan: false, scanClerk: false };
   for (let i = 0; i < argv.length; i++) {
@@ -108,6 +109,7 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
+/** Format a DB value for console output (∅ for null/undefined, ISO for Date). */
 const fmt = (v: unknown): string => {
   if (v === null || v === undefined) return '∅';
   if (v instanceof Date) return v.toISOString();
@@ -163,7 +165,7 @@ async function scan(client: PoolClient): Promise<void> {
       `\n▶ ${fmt(r.id)}  ${fmt(r.email)}` +
         `\n    users.current_plan_id = ${fmt(r.users_plan)} (${fmt(r.users_status)})` +
         `\n    subscriptions.plan_id = ${fmt(r.sub_plan)} (${fmt(r.sub_status)}) ← wins at runtime${flag}` +
-        `\n    → reconcile: bunx tsx scripts/sync-user-plan.ts --user ${fmt(r.id)} --plan ${fmt(r.users_plan)} --apply`,
+        `\n    → inspect (read-only): bunx tsx scripts/sync-user-plan.ts --user ${fmt(r.id)} --plan ${fmt(r.users_plan)}  (add --apply after verifying)`,
     );
   }
   console.log(`\n${'='.repeat(72)}\n${rows.length} divergent user(s).`);
@@ -252,7 +254,11 @@ async function scanClerk(client: PoolClient): Promise<void> {
        LEFT JOIN LATERAL (
          SELECT plan_id FROM subscriptions
           WHERE user_id = u.id AND status = 'active'
-          ORDER BY current_period_start DESC
+          -- Mirror getUserPlanFromDB precedence: lifetime > paid > free, then recency.
+          ORDER BY
+            (lower(plan_id) LIKE '%lifetime%' OR lower(plan_id) LIKE '%founding%') DESC,
+            (lower(plan_id) IN ('vn_free', 'gl_starter', 'free', 'trial', 'starter')) ASC,
+            current_period_start DESC
           LIMIT 1
        ) s ON true
       WHERE lower(coalesce(s.plan_id, u.current_plan_id, 'vn_free'))
@@ -276,10 +282,17 @@ async function scanClerk(client: PoolClient): Promise<void> {
         continue;
       }
       const cu = (await res.json()) as { public_metadata?: { planId?: unknown } };
-      const clerkPlan = cu?.public_metadata?.planId;
-      if (typeof clerkPlan !== 'string' || !clerkPlan) continue; // no Clerk plan → skip
+      const rawClerkPlan = cu?.public_metadata?.planId;
+      const clerkPlan = typeof rawClerkPlan === 'string' ? rawClerkPlan : '';
+      // A paid DB user with a missing/empty Clerk planId is itself a drift (Clerk
+      // was never synced) — surface it as '(none)' rather than skipping.
       if (clerkPlan.toLowerCase() === String(r.db_plan).toLowerCase()) continue;
-      mismatches.push({ clerkPlan, dbPlan: String(r.db_plan), email: r.email ?? '∅', id: r.id });
+      mismatches.push({
+        clerkPlan: clerkPlan || '(none)',
+        dbPlan: String(r.db_plan),
+        email: r.email ?? '∅',
+        id: r.id,
+      });
     } catch (e) {
       console.log(`   ⚠️ Clerk lookup ${fmt(r.id)} failed: ${(e as Error).message}`);
     }
@@ -452,6 +465,7 @@ async function reconcile(client: PoolClient, userId: string, plan: string, apply
   await printUserState(client, userId);
 }
 
+/** Entry point: validate env/args, open a pooled connection, and dispatch to the requested mode. */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 

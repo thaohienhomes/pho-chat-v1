@@ -128,7 +128,25 @@ try {
     // subscription plan — a blind spot this script previously missed by reading
     // only users.current_plan_id. (For DB↔Clerk drift instead, use
     // scripts/sync-user-plan.ts --scan-clerk.) Check it FIRST.
-    const activeSubPlan = subs.find((s) => String(s.status) === 'active')?.plan_id;
+    // Pick the active subscription the RUNTIME would resolve (getUserPlanFromDB:
+    // lifetime > paid > free, then current_period_start recency) — not just the
+    // first active row — so duplicate active rows don't yield a false verdict.
+    const activeSubPlan = subs
+      .filter((s) => String(s.status) === 'active')
+      .sort((a, b) => {
+        const aPlan = String(a.plan_id).toLowerCase();
+        const bPlan = String(b.plan_id).toLowerCase();
+        const isLifetime = (p: string) => p.includes('lifetime') || p.includes('founding');
+        const aL = isLifetime(aPlan);
+        const bL = isLifetime(bPlan);
+        const aF = FREE_PLANS.has(aPlan);
+        const bF = FREE_PLANS.has(bPlan);
+        if (aL && !bL) return -1;
+        if (!aL && bL) return 1;
+        if (aF && !bF) return 1;
+        if (!aF && bF) return -1;
+        return new Date(b.current_period_start).getTime() - new Date(a.current_period_start).getTime();
+      })[0]?.plan_id;
     const planDrift =
       activeSubPlan !== undefined && String(activeSubPlan).toLowerCase() !== plan.toLowerCase();
 
@@ -142,8 +160,9 @@ try {
           `${subPaid ? '' : ' (free/limited → paid tiers blocked)'}.`,
       );
       console.log(
-        `      → Reconcile: bunx tsx scripts/sync-user-plan.ts --user ${id} --plan ${plan} --apply`,
+        `      → Inspect first (read-only): bunx tsx scripts/sync-user-plan.ts --user ${id} --plan ${plan}`,
       );
+      console.log('         then add --apply once the correct target plan is confirmed.');
     } else if (isPaidPlan && statusActive) {
       console.log(
         `   ✅ Billing/plan data is HEALTHY (paid plan + ACTIVE${hasActiveSub ? ' + active subscription row' : ', via users.current_plan_id'}).`,
