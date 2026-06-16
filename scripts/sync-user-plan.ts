@@ -111,6 +111,12 @@ const fmt = (v: unknown): string => {
 async function scan(client: PoolClient): Promise<void> {
   await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
 
+  // Compare users.current_plan_id vs the active subscription plan, but IGNORE
+  // free↔free alias noise: the activate-free route writes subscriptions.plan_id
+  // = 'free' while users.current_plan_id stays 'vn_free' — same tier, both in the
+  // free set, so getUserPlanFromDB resolves to free either way (no entitlement
+  // difference). Only surface rows that differ in a way that affects access.
+  const freeAliases = [...FREE_PLANS];
   const { rows } = await client.query(
     `SELECT u.id,
             u.email,
@@ -123,11 +129,16 @@ async function scan(client: PoolClient): Promise<void> {
        JOIN subscriptions s
          ON s.user_id = u.id
         AND s.status = 'active'
-      WHERE lower(coalesce(u.current_plan_id, '')) <> lower(s.plan_id)
+      WHERE lower(coalesce(u.current_plan_id, 'vn_free')) <> lower(s.plan_id)
+        AND NOT (
+          lower(coalesce(u.current_plan_id, 'vn_free')) = ANY($1::text[])
+          AND lower(s.plan_id) = ANY($1::text[])
+        )
       ORDER BY u.current_plan_id, u.email`,
+    [freeAliases],
   );
 
-  console.log('🔎 Plan divergence scan (READ-ONLY)');
+  console.log('🔎 Plan divergence scan (READ-ONLY) — free↔free aliases ignored');
   console.log(`   users.current_plan_id  ≠  active subscriptions.plan_id\n${'='.repeat(72)}`);
 
   if (rows.length === 0) {
