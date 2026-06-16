@@ -80,6 +80,25 @@ const defaultMiddleware = (request: NextRequest) => {
     return new NextResponse(null, { status: 404 });
   }
 
+  // ── Clerk session handshake must NOT be rewritten ──────────────────────────
+  // When Clerk redirects back carrying its handshake nonce (`__clerk_handshake`),
+  // clerkMiddleware sets the __session/__client cookies and 307-redirects to the
+  // clean URL. The `NextResponse.rewrite()` below would swallow that redirect —
+  // Next.js ignores a `Location` header once `x-middleware-rewrite` is set — so
+  // the session token is never established and EVERY cookie-auth endpoint (tRPC +
+  // /api/subscription/*) 401s with reason `client-uat-but-no-session-token`
+  // (signed-in client, no userId → picker greys PRO/flagship models). Return a
+  // passthrough so Clerk fully owns the handshake response. Ref: clerk/javascript#6057.
+  if (
+    url.searchParams.has('__clerk_handshake') ||
+    url.searchParams.has('__clerk_handshake_nonce') ||
+    url.searchParams.has('__clerk_help') ||
+    url.searchParams.has('__clerk_db_jwt')
+  ) {
+    logDefault('Skipping rewrite for Clerk handshake: %s', url.pathname);
+    return NextResponse.next();
+  }
+
   logDefault('Processing request: %s %s', request.method, request.url);
 
   // skip all api requests
