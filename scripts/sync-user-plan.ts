@@ -37,6 +37,11 @@
  *   # DB(resolved) ↔ Clerk divergence for paid users (read-only)
  *   bunx tsx scripts/sync-user-plan.ts --scan-clerk
  *
+ *   # Cancel redundant active subscriptions, keeping the best row per user
+ *   # (all users, or one with --user). Read-only without --apply.
+ *   bunx tsx scripts/sync-user-plan.ts --dedupe-subs
+ *   bunx tsx scripts/sync-user-plan.ts --dedupe-subs --apply
+ *
  *   # Dry-run for one user: print current state + intended changes (no writes).
  *   bunx tsx scripts/sync-user-plan.ts --user user_xxx --plan vn_ultimate
  *
@@ -80,6 +85,7 @@ const FREE_PLANS = new Set(['vn_free', 'gl_starter', 'free', 'trial', 'starter']
 
 interface Args {
   apply: boolean;
+  dedupeSubs: boolean;
   force: boolean;
   plan?: string;
   scan: boolean;
@@ -88,11 +94,12 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { apply: false, force: false, scan: false, scanClerk: false };
+  const args: Args = { apply: false, dedupeSubs: false, force: false, scan: false, scanClerk: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--scan-clerk') args.scanClerk = true;
     else if (a === '--scan') args.scan = true;
+    else if (a === '--dedupe-subs') args.dedupeSubs = true;
     else if (a === '--apply') args.apply = true;
     else if (a === '--force') args.force = true;
     else if (a === '--user') args.user = argv[++i];
@@ -293,6 +300,85 @@ async function scanClerk(client: PoolClient): Promise<void> {
   console.log(`\n${mismatches.length} user(s) with DB↔Clerk drift.`);
 }
 
+/**
+ * Cancel redundant active subscriptions, keeping the single best row per user.
+ * "Best" = a real (non-free) payment provider first, then the furthest
+ * current_period_end, then the most recent start. Read-only without --apply.
+ */
+async function dedupeSubs(
+  client: PoolClient,
+  userId: string | undefined,
+  apply: boolean,
+): Promise<void> {
+  if (!apply) await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
+
+  const dupUsers = await client.query(
+    `SELECT user_id, count(*)::int AS n
+       FROM subscriptions
+      WHERE status = 'active'${userId ? ' AND user_id = $1' : ''}
+      GROUP BY user_id
+     HAVING count(*) > 1
+      ORDER BY n DESC`,
+    userId ? [userId] : [],
+  );
+
+  console.log(`🧹 Dedupe active subscriptions (${apply ? 'APPLY' : 'DRY-RUN'})`);
+  console.log(`   Users with >1 active subscription: ${dupUsers.rowCount}\n${'='.repeat(72)}`);
+
+  if (dupUsers.rowCount === 0) {
+    console.log('   ✅ No user has duplicate active subscriptions.');
+    return;
+  }
+
+  let totalCanceled = 0;
+  for (const du of dupUsers.rows) {
+    const { rows: subs } = await client.query(
+      `SELECT id, plan_id, payment_provider, current_period_start, current_period_end
+         FROM subscriptions WHERE user_id = $1 AND status = 'active'`,
+      [du.user_id],
+    );
+
+    const scored = [...subs].sort((a, b) => {
+      const aReal = String(a.payment_provider) === 'free' ? 0 : 1;
+      const bReal = String(b.payment_provider) === 'free' ? 0 : 1;
+      if (aReal !== bReal) return bReal - aReal;
+      const aEnd = a.current_period_end ? new Date(a.current_period_end).getTime() : 0;
+      const bEnd = b.current_period_end ? new Date(b.current_period_end).getTime() : 0;
+      if (aEnd !== bEnd) return bEnd - aEnd;
+      const aStart = a.current_period_start ? new Date(a.current_period_start).getTime() : 0;
+      const bStart = b.current_period_start ? new Date(b.current_period_start).getTime() : 0;
+      return bStart - aStart;
+    });
+    const keep = scored[0];
+    const drop = scored.slice(1);
+
+    console.log(`\n▶ ${du.user_id}  (${du.n} active)`);
+    console.log(
+      `   KEEP   : id=${fmt(keep.id)} plan=${fmt(keep.plan_id)} provider=${fmt(keep.payment_provider)} end=${fmt(keep.current_period_end)}`,
+    );
+    for (const d of drop) {
+      console.log(
+        `   CANCEL : id=${fmt(d.id)} plan=${fmt(d.plan_id)} provider=${fmt(d.payment_provider)} end=${fmt(d.current_period_end)}`,
+      );
+    }
+
+    if (apply) {
+      const dropIds = drop.map((d) => d.id);
+      await client.query(
+        `UPDATE subscriptions
+            SET status = 'canceled', cancel_at_period_end = true, updated_at = now()
+          WHERE id = ANY($1::text[])`,
+        [dropIds],
+      );
+      totalCanceled += dropIds.length;
+    }
+  }
+
+  console.log(`\n${'='.repeat(72)}`);
+  if (apply) console.log(`✅ Canceled ${totalCanceled} redundant active subscription row(s).`);
+  else console.log('Dry-run — re-run with --apply to cancel the rows marked CANCEL.');
+}
+
 async function reconcile(client: PoolClient, userId: string, plan: string, apply: boolean): Promise<void> {
   console.log(`\n▶ Reconcile ${userId} → ${plan}  (${apply ? 'APPLY' : 'DRY-RUN'})`);
 
@@ -374,9 +460,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!args.scan && !args.scanClerk && (!args.user || !args.plan)) {
+  if (!args.scan && !args.scanClerk && !args.dedupeSubs && (!args.user || !args.plan)) {
     console.error(
-      'Usage:\n  --scan\n  --scan-clerk\n  --user <id> --plan <planId> [--apply]',
+      'Usage:\n  --scan\n  --scan-clerk\n  --dedupe-subs [--user <id>] [--apply]\n  --user <id> --plan <planId> [--apply]',
     );
     process.exit(1);
   }
@@ -394,6 +480,8 @@ async function main(): Promise<void> {
       await scan(client);
     } else if (args.scanClerk) {
       await scanClerk(client);
+    } else if (args.dedupeSubs) {
+      await dedupeSubs(client, args.user, args.apply);
     } else {
       await reconcile(client, args.user!, args.plan!, args.apply);
     }
