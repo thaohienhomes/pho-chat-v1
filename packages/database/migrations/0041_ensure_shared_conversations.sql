@@ -31,9 +31,11 @@ CREATE TABLE IF NOT EXISTS "shared_conversations" (
   "updated_at" timestamp DEFAULT now(),
   "accessed_at" timestamp DEFAULT now()
 );
-
+--> statement-breakpoint
 -- Create indexes if they don't exist
 CREATE INDEX IF NOT EXISTS "shared_conversations_user_id_idx" ON "shared_conversations" ("user_id");
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "shared_conversations_is_public_idx" ON "shared_conversations" ("is_public");
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "shared_conversations_created_at_idx" ON "shared_conversations" ("created_at");
 
