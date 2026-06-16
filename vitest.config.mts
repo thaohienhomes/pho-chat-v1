@@ -15,6 +15,10 @@ export default defineConfig({
       '@/const/locale': resolve(__dirname, './src/const/locale'),
       // TODO: after refactor the errorResponse, we can remove it
       '@/utils/errorResponse': resolve(__dirname, './src/utils/errorResponse'),
+      // pho.chat-specific utils that live in src/utils (not the @lobechat/utils package)
+      '@/utils/autoRouter': resolve(__dirname, './src/utils/autoRouter'),
+      '@/utils/crypto-hash': resolve(__dirname, './src/utils/crypto-hash'),
+      '@/utils/tiktok-events': resolve(__dirname, './src/utils/tiktok-events'),
       '@/utils': resolve(__dirname, './packages/utils/src'),
       '@/types': resolve(__dirname, './packages/types/src'),
       '@/const': resolve(__dirname, './packages/const/src'),

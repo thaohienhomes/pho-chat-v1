@@ -83,6 +83,13 @@ describe('TikTok', () => {
     const { identifyTikTokUser } = await import('@/utils/tiktok-events');
     const { hashUserPII } = await import('@/utils/crypto-hash');
 
+    // Re-establish the resolved value here: afterEach restoreAllMocks() strips the
+    // factory default, which would otherwise make hashUserPII resolve to undefined.
+    vi.mocked(hashUserPII).mockResolvedValue({
+      email: 'hashed-email',
+      external_id: 'hashed-id',
+    });
+
     render(
       <TikTok
         pixelId="D4KRIFBC77U4IAHDO190"

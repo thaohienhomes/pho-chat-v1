@@ -12,6 +12,14 @@ vi.mock('@/server/services/aiChat');
 vi.mock('@/server/services/file', () => ({
   FileService: vi.fn(),
 }));
+// The sendMessageInServer procedure runs the subscriptionAuth middleware, which
+// constructs a SubscriptionService(serverDB). The test ctx has no serverDB, so
+// stub the service to grant trial access and keep the test focused on the router.
+vi.mock('@/server/services/subscription', () => ({
+  SubscriptionService: vi.fn().mockImplementation(() => ({
+    checkTrialAccess: vi.fn().mockResolvedValue({ allowed: true }),
+  })),
+}));
 
 describe('aiChatRouter', () => {
   const mockCtx = { userId: 'u1' };
