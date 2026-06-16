@@ -123,7 +123,27 @@ try {
     const statusActive = String(u.subscription_status ?? '').toUpperCase() === 'ACTIVE';
     const hasActiveSub = subs.some((s) => String(s.status) === 'active');
 
-    if (isPaidPlan && statusActive) {
+    // PLAN DRIFT: getUserPlanFromDB resolves the active SUBSCRIPTION row, not
+    // users.current_plan_id. If they disagree, the user is silently gated on the
+    // subscription plan. This blind spot is why nga.ntv (users=vn_ultimate, active
+    // sub=medical_beta) was previously reported "healthy" — check it FIRST.
+    const activeSubPlan = subs.find((s) => String(s.status) === 'active')?.plan_id;
+    const planDrift =
+      activeSubPlan !== undefined && String(activeSubPlan).toLowerCase() !== plan.toLowerCase();
+
+    if (planDrift) {
+      const subPaid = !FREE_PLANS.has(String(activeSubPlan).toLowerCase());
+      console.log(
+        `   ⚠️ PLAN DRIFT: users.current_plan_id="${plan}" but the ACTIVE subscription row is "${fmt(activeSubPlan)}".`,
+      );
+      console.log(
+        `      → getUserPlanFromDB resolves the SUBSCRIPTION ("${fmt(activeSubPlan)}"), so the user is gated on that plan` +
+          `${subPaid ? '' : ' (free/limited → paid tiers blocked)'}.`,
+      );
+      console.log(
+        `      → Reconcile: bunx tsx scripts/sync-user-plan.ts --user ${id} --plan ${plan} --apply`,
+      );
+    } else if (isPaidPlan && statusActive) {
       console.log(
         `   ✅ Billing/plan data is HEALTHY (paid plan + ACTIVE${hasActiveSub ? ' + active subscription row' : ', via users.current_plan_id'}).`,
       );

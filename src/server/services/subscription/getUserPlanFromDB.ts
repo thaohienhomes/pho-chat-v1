@@ -79,13 +79,26 @@ export async function getUserPlanFromDB(userId: string): Promise<UserPlanResult>
   // ── 1. Resolve the DB result first ─────────────────────────────────
   let dbResult: UserPlanResult;
 
-  const activeSubs = await db
-    .select({
-      currentPeriodStart: subscriptions.currentPeriodStart,
-      planId: subscriptions.planId,
-    })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active')));
+  // Read the active subscriptions AND the users-table baseline in parallel.
+  // `users.current_plan_id` is the no-subscription fallback (below) and is ALSO
+  // used to detect drift: one-off admin scripts (e.g. scripts/manual-db-sync.ts)
+  // update `users.current_plan_id` but NOT the `subscriptions` row, and since the
+  // subscription wins below, a stale subscription silently gates the user on the
+  // wrong plan. Real case: nga.ntv@gmail.com — users=vn_ultimate, active
+  // subscription=medical_beta → flagship/Tier 3 blocked. We surface every
+  // divergence so it can be reconciled via `scripts/sync-user-plan.ts`.
+  const [activeSubs, userRows] = await Promise.all([
+    db
+      .select({
+        currentPeriodStart: subscriptions.currentPeriodStart,
+        planId: subscriptions.planId,
+      })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))),
+    db.select({ planId: users.currentPlanId }).from(users).where(eq(users.id, userId)).limit(1),
+  ]);
+
+  const usersTablePlanId = userRows[0]?.planId ?? undefined;
 
   if (activeSubs.length > 0) {
     const sorted = [...activeSubs].sort((a, b) => {
@@ -106,22 +119,34 @@ export async function getUserPlanFromDB(userId: string): Promise<UserPlanResult>
       return bStart - aStart;
     });
 
+    const resolvedPlanId = sorted[0].planId;
+
+    // Drift detection (observability only — never changes resolution or throws).
+    // Flag when the users-table baseline is a non-free plan that disagrees with
+    // the subscription that actually gates the user.
+    if (
+      usersTablePlanId &&
+      usersTablePlanId.toLowerCase() !== resolvedPlanId.toLowerCase() &&
+      !FREE_PLAN_IDS.has(usersTablePlanId.toLowerCase())
+    ) {
+      console.warn(
+        `[plan-drift] users.current_plan_id=${usersTablePlanId} disagrees with active ` +
+          `subscription plan=${resolvedPlanId} for ${userId}. The subscription row wins for ` +
+          `gating — reconcile via: bunx tsx scripts/sync-user-plan.ts --user ${userId} ` +
+          `--plan ${usersTablePlanId} --apply`,
+      );
+    }
+
     dbResult = {
       hasActiveSubscription: true,
-      planId: sorted[0].planId,
+      planId: resolvedPlanId,
       source: 'db_subscription',
     };
   } else {
-    const [user] = await db
-      .select({ planId: users.currentPlanId })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    dbResult = user?.planId
+    dbResult = usersTablePlanId
       ? {
           hasActiveSubscription: false,
-          planId: user.planId,
+          planId: usersTablePlanId,
           source: 'db_user_default',
         }
       : {
