@@ -93,10 +93,14 @@ describe('search actions', () => {
         searchEngines: ['google'],
       });
       expect(result.current.searchLoading[messageId]).toBe(false);
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        JSON.stringify(expectedContent),
-      );
+      // Compare the parsed payload rather than the exact JSON string, so the
+      // assertion does not depend on object key ordering.
+      expect(result.current.internal_updateMessageContent).toHaveBeenCalledTimes(1);
+      const [calledMessageId, calledContent] = (
+        result.current.internal_updateMessageContent as Mock
+      ).mock.calls[0];
+      expect(calledMessageId).toBe(messageId);
+      expect(JSON.parse(calledContent)).toEqual(expectedContent);
     });
 
     it('should handle empty search results and retry with default engine', async () => {
