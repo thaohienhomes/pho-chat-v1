@@ -81,12 +81,14 @@ export async function getUserPlanFromDB(userId: string): Promise<UserPlanResult>
 
   // Read the active subscriptions AND the users-table baseline in parallel.
   // `users.current_plan_id` is the no-subscription fallback (below) and is ALSO
-  // used to detect drift: one-off admin scripts (e.g. scripts/manual-db-sync.ts)
-  // update `users.current_plan_id` but NOT the `subscriptions` row, and since the
-  // subscription wins below, a stale subscription silently gates the user on the
-  // wrong plan. Real case: nga.ntv@gmail.com — users=vn_ultimate, active
-  // subscription=medical_beta → flagship/Tier 3 blocked. We surface every
-  // divergence so it can be reconciled via `scripts/sync-user-plan.ts`.
+  // used to detect drift: one-off admin scripts / raw SQL (e.g.
+  // scripts/manual-db-sync.ts) update `users.current_plan_id` but NOT the
+  // `subscriptions` row. Since the subscription wins below, a stale subscription
+  // would silently gate the user on the wrong plan. We log every such divergence
+  // so it can be reconciled via `scripts/sync-user-plan.ts --scan`.
+  // (NB: a separate DB↔Clerk drift class — DB correct but Clerk publicMetadata
+  // stale, as in the 2026-06 nga.ntv case — is display-only here and handled by
+  // `sync-user-plan.ts --scan-clerk`; Clerk never gates when the DB plan is paid.)
   const [activeSubs, userRows] = await Promise.all([
     db
       .select({

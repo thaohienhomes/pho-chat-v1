@@ -1,28 +1,41 @@
 #!/usr/bin/env tsx
 /**
- * Sync a user's plan across ALL sources of truth (users + subscriptions + Clerk).
+ * Sync a user's plan across ALL sources of truth (users + subscriptions + Clerk),
+ * and scan for users where those sources have drifted apart.
  *
- * WHY THIS EXISTS
- * ---------------
- * `users.current_plan_id` and the `subscriptions` table can silently diverge:
- *   - `/api/promo/activate` and `/api/subscription/upgrade` write the
- *     `subscriptions` row.
- *   - One-off admin scripts (e.g. `scripts/manual-db-sync.ts`) update ONLY
- *     `users.current_plan_id`.
- * `getUserPlanFromDB` reads the SUBSCRIPTIONS row FIRST (PHO-241), so a stale
- * subscription silently overrides `users.current_plan_id` and the user is gated
- * on the wrong plan — and `diagnose-auth-lockout.ts` (which only read
- * `users.current_plan_id`) reported them as "healthy".
+ * CANONICAL ADMIN-GRANT / REPAIR TOOL — prefer this over raw SQL or one-off
+ * scripts (e.g. manual-db-sync.ts) when changing a user's plan. Updating only
+ * ONE source — `users.current_plan_id`, or only the `subscriptions` row, or only
+ * Clerk — is exactly what creates the drift this script repairs.
  *
- * REAL CASE (2026-06): nga.ntv@gmail.com — users.current_plan_id='vn_ultimate'
- * but a leftover active `subscriptions` row planId='medical_beta'. medical_beta
- * blocks Tier 3, so flagship/"Cao cấp" models were greyed out despite Ultimate.
+ * TWO DRIFT CLASSES
+ * -----------------
+ * 1. users.current_plan_id  ↔  subscriptions.plan_id   (--scan)
+ *    `getUserPlanFromDB` reads the active SUBSCRIPTION first; `users.current_plan_id`
+ *    is only a fallback. Update one but not the other and the user is gated on the
+ *    wrong plan — and `diagnose-auth-lockout.ts` (which only read
+ *    `users.current_plan_id`) would report them "healthy".
+ *
+ * 2. DB  ↔  Clerk publicMetadata.planId                (--scan-clerk)
+ *    Gating uses the DB; Clerk metadata is display/analytics cache only and must
+ *    never gate authorization (PHO-241). But a DB grant that doesn't sync Clerk
+ *    leaves Settings / plan badge / PostHog showing the stale plan, which reads as
+ *    "lost my plan" to users and support. (See also the one-shot audit-plan-drift.ts.)
+ *
+ * REAL CASE (2026-06): nga.ntv@gmail.com — DB (users + subscriptions) was
+ * `vn_ultimate` via a manual `admin_upgrade`, but Clerk publicMetadata.planId was
+ * still `medical_beta` because the grant never synced Clerk. Server gating already
+ * gave Ultimate; the user/support saw `medical_beta` everywhere (compounded by an
+ * auth-session incident that briefly fell the user back to vn_free). This is a
+ * DB↔Clerk drift (class 2), NOT a users↔subscriptions drift.
  *
  * USAGE
  * -----
- *   # Read-only. List every user whose ACTIVE subscription plan disagrees with
- *   # users.current_plan_id (the full divergence cohort).
+ *   # users ↔ subscriptions divergence (read-only)
  *   bunx tsx scripts/sync-user-plan.ts --scan
+ *
+ *   # DB(resolved) ↔ Clerk divergence for paid users (read-only)
+ *   bunx tsx scripts/sync-user-plan.ts --scan-clerk
  *
  *   # Dry-run for one user: print current state + intended changes (no writes).
  *   bunx tsx scripts/sync-user-plan.ts --user user_xxx --plan vn_ultimate
@@ -30,7 +43,7 @@
  *   # Apply: align subscriptions + users (+ Clerk) to <plan>.
  *   bunx tsx scripts/sync-user-plan.ts --user user_xxx --plan vn_ultimate --apply
  *
- * Requires env: DATABASE_URL  (CLERK_SECRET_KEY optional — enables Clerk sync).
+ * Requires env: DATABASE_URL  (CLERK_SECRET_KEY for Clerk sync / --scan-clerk).
  */
 import dotenv from 'dotenv';
 import { Pool, type PoolClient } from 'pg';
@@ -70,14 +83,16 @@ interface Args {
   force: boolean;
   plan?: string;
   scan: boolean;
+  scanClerk: boolean;
   user?: string;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { apply: false, force: false, scan: false };
+  const args: Args = { apply: false, force: false, scan: false, scanClerk: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--scan') args.scan = true;
+    if (a === '--scan-clerk') args.scanClerk = true;
+    else if (a === '--scan') args.scan = true;
     else if (a === '--apply') args.apply = true;
     else if (a === '--force') args.force = true;
     else if (a === '--user') args.user = argv[++i];
@@ -123,8 +138,8 @@ async function scan(client: PoolClient): Promise<void> {
   for (const r of rows) {
     const usersPaid = !FREE_PLANS.has(String(r.users_plan ?? 'vn_free').toLowerCase());
     const subPaid = !FREE_PLANS.has(String(r.sub_plan).toLowerCase());
-    // The subscription wins at runtime. If users is the HIGHER paid plan, the
-    // user is being under-served (the nga.ntv case).
+    // The subscription wins at runtime. If users is a paid plan but the active
+    // subscription is free-ish, the user is being under-served.
     const flag = usersPaid && !subPaid ? ' ⬅ user UNDER-SERVED (sub is free-ish)' : '';
     console.log(
       `\n▶ ${fmt(r.id)}  ${fmt(r.email)}` +
@@ -178,16 +193,93 @@ async function syncClerk(userId: string, plan: string): Promise<void> {
     console.log('   ⚠️ CLERK_SECRET_KEY not set — skipping Clerk metadata sync (DB is authoritative).');
     return;
   }
+  // PATCH merges top-level public_metadata keys. Setting planSyncedAt lets the
+  // client cache detect a stale value and refetch (PHO-247). Also normalize the
+  // legacy `medical_beta` flag so leaving the promo plan clears the MedicalBeta
+  // feedback UI / flag-based checks instead of leaving a stale `true`.
+  const publicMetadata = {
+    medical_beta: plan === 'medical_beta',
+    planId: plan,
+    planSyncedAt: Date.now(),
+  };
   const res = await fetch(`https://api.clerk.com/v1/users/${userId}/metadata`, {
-    body: JSON.stringify({ public_metadata: { planId: plan, planSyncedAt: Date.now() } }),
+    body: JSON.stringify({ public_metadata: publicMetadata }),
     headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
     method: 'PATCH',
   });
   if (res.ok) {
-    console.log(`   ✅ Clerk publicMetadata.planId → ${plan}`);
+    console.log(`   ✅ Clerk publicMetadata.planId → ${plan} (medical_beta=${plan === 'medical_beta'})`);
   } else {
     console.log(`   ⚠️ Clerk sync failed (${res.status}): ${await res.text()}`);
   }
+}
+
+/** Read-only: list paid users whose resolved DB plan != Clerk publicMetadata.planId. */
+async function scanClerk(client: PoolClient): Promise<void> {
+  const secret = process.env.CLERK_SECRET_KEY;
+  if (!secret) {
+    console.error('❌ CLERK_SECRET_KEY required for --scan-clerk.');
+    process.exit(1);
+  }
+  await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
+
+  // Resolved plan = active subscription plan if present, else users.current_plan_id
+  // — the same precedence getUserPlanFromDB uses. Only paid users are worth
+  // checking; free↔free drift is harmless.
+  const { rows } = await client.query(
+    `SELECT u.id,
+            u.email,
+            coalesce(s.plan_id, u.current_plan_id, 'vn_free') AS db_plan
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT plan_id FROM subscriptions
+          WHERE user_id = u.id AND status = 'active'
+          ORDER BY current_period_start DESC
+          LIMIT 1
+       ) s ON true
+      WHERE lower(coalesce(s.plan_id, u.current_plan_id, 'vn_free'))
+            NOT IN ('vn_free', 'gl_starter', 'free', 'trial', 'starter')`,
+  );
+
+  console.log('🔎 DB(resolved) ↔ Clerk planId scan (READ-ONLY)');
+  console.log(`   Checking ${rows.length} paid user(s) against Clerk…\n${'='.repeat(72)}`);
+
+  const mismatches: Array<{ clerkPlan: string; dbPlan: string; email: string; id: string }> = [];
+  let checked = 0;
+  for (const r of rows) {
+    checked++;
+    if (checked % 50 === 0) console.log(`   …checked ${checked}/${rows.length}`);
+    try {
+      const res = await fetch(`https://api.clerk.com/v1/users/${r.id}`, {
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      if (!res.ok) {
+        console.log(`   ⚠️ Clerk lookup ${fmt(r.id)} → ${res.status}`);
+        continue;
+      }
+      const cu = (await res.json()) as { public_metadata?: { planId?: unknown } };
+      const clerkPlan = cu?.public_metadata?.planId;
+      if (typeof clerkPlan !== 'string' || !clerkPlan) continue; // no Clerk plan → skip
+      if (clerkPlan.toLowerCase() === String(r.db_plan).toLowerCase()) continue;
+      mismatches.push({ clerkPlan, dbPlan: String(r.db_plan), email: r.email ?? '∅', id: r.id });
+    } catch (e) {
+      console.log(`   ⚠️ Clerk lookup ${fmt(r.id)} failed: ${(e as Error).message}`);
+    }
+  }
+
+  console.log(`\n${'='.repeat(72)}`);
+  if (mismatches.length === 0) {
+    console.log('✅ No DB↔Clerk plan drift among paid users.');
+    return;
+  }
+  for (const m of mismatches) {
+    console.log(
+      `\n▶ ${m.id}  ${m.email}` +
+        `\n    DB(resolved) = ${m.dbPlan}   Clerk = ${m.clerkPlan}` +
+        `\n    → sync Clerk to DB: bunx tsx scripts/sync-user-plan.ts --user ${m.id} --plan ${m.dbPlan} --apply`,
+    );
+  }
+  console.log(`\n${mismatches.length} user(s) with DB↔Clerk drift.`);
 }
 
 async function reconcile(client: PoolClient, userId: string, plan: string, apply: boolean): Promise<void> {
@@ -271,8 +363,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!args.scan && (!args.user || !args.plan)) {
-    console.error('Usage:\n  --scan\n  --user <id> --plan <planId> [--apply]');
+  if (!args.scan && !args.scanClerk && (!args.user || !args.plan)) {
+    console.error(
+      'Usage:\n  --scan\n  --scan-clerk\n  --user <id> --plan <planId> [--apply]',
+    );
     process.exit(1);
   }
 
@@ -287,6 +381,8 @@ async function main(): Promise<void> {
   try {
     if (args.scan) {
       await scan(client);
+    } else if (args.scanClerk) {
+      await scanClerk(client);
     } else {
       await reconcile(client, args.user!, args.plan!, args.apply);
     }

@@ -125,8 +125,9 @@ try {
 
     // PLAN DRIFT: getUserPlanFromDB resolves the active SUBSCRIPTION row, not
     // users.current_plan_id. If they disagree, the user is silently gated on the
-    // subscription plan. This blind spot is why nga.ntv (users=vn_ultimate, active
-    // sub=medical_beta) was previously reported "healthy" — check it FIRST.
+    // subscription plan — a blind spot this script previously missed by reading
+    // only users.current_plan_id. (For DB↔Clerk drift instead, use
+    // scripts/sync-user-plan.ts --scan-clerk.) Check it FIRST.
     const activeSubPlan = subs.find((s) => String(s.status) === 'active')?.plan_id;
     const planDrift =
       activeSubPlan !== undefined && String(activeSubPlan).toLowerCase() !== plan.toLowerCase();
