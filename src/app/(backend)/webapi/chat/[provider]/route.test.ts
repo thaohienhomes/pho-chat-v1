@@ -36,6 +36,20 @@ vi.mock('@/const/auth', async (importOriginal) => {
   };
 });
 
+// checkAuth middleware (PHO-249) runs a subscription/trial DB check for authed
+// users and fails closed with 503 on DB error; mock it so happy-path tests
+// reach the handler instead of AUTH_SERVICE_UNAVAILABLE.
+vi.mock('@/database/server', () => ({
+  getServerDB: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('@/server/services/subscription', () => ({
+  SubscriptionService: vi.fn().mockImplementation(() => ({
+    checkTrialAccess: vi.fn().mockResolvedValue({ allowed: true, isTrialUser: false }),
+    getSubscriptionPlan: vi.fn().mockResolvedValue({ planId: 'vn_free' }),
+  })),
+}));
+
 // 模拟请求和响应
 let request: Request;
 beforeEach(() => {
@@ -94,8 +108,8 @@ describe('POST handler', () => {
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({
         body: {
-          error: { errorType: 401 },
-          provider: 'test-provider',
+          error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+          provider: 'pho-chat',
         },
         errorType: 401,
       });
@@ -135,7 +149,8 @@ describe('POST handler', () => {
       expect(checkAuthMethod).toBeCalledWith({
         accessCode: 'test-access-code',
         apiKey: 'test-api-key',
-        clerkAuth: {},
+        clerkAuth: null,
+        fallbackUserId: undefined,
         nextAuthAuthorized: true,
       });
     });
@@ -151,8 +166,8 @@ describe('POST handler', () => {
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
         body: {
-          error: {},
-          provider: 'test-provider',
+          error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+          provider: 'pho-chat',
         },
         errorType: 500,
       });
