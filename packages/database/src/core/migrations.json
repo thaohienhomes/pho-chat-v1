@@ -776,19 +776,26 @@
   },
   {
     "sql": [
-      "-- Add onboarding-related columns to users table\n-- These store the user's profession selection and recommendations from onboarding\n\n-- Add profession column for storing user's selected profession(s)\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"profession\" text;\n\n-- Add specialization column for more specific role details\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"specialization\" text;\n\n-- Add recommendation_selections column for storing AI/plugin recommendations\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"recommendation_selections\" jsonb;\n\n-- Add index for faster queries on recommendation_selections\nCREATE INDEX IF NOT EXISTS \"users_recommendation_selections_idx\" ON \"users\" USING gin (\"recommendation_selections\");\n"
+      "-- Add onboarding-related columns to users table\n-- These store the user's profession selection and recommendations from onboarding\n\n-- Add profession column for storing user's selected profession(s)\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"profession\" text;\n",
+      "\n-- Add specialization column for more specific role details\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"specialization\" text;\n",
+      "\n-- Add recommendation_selections column for storing AI/plugin recommendations\nALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"recommendation_selections\" jsonb;\n",
+      "\n-- Add index for faster queries on recommendation_selections\nCREATE INDEX IF NOT EXISTS \"users_recommendation_selections_idx\" ON \"users\" USING gin (\"recommendation_selections\");\n"
     ],
     "bps": true,
     "folderMillis": 1767172800000,
-    "hash": "2c72b53f63b309280a93a5251ec9c2de59358d597e5ebf3594841bcdbf7a263b"
+    "hash": "8034bf06f3ae9acdc6a7c9884d603d36990b4afaddda955acf20c7e454c4cd3f"
   },
   {
     "sql": [
-      "-- Cross-Session User Memory\n-- Stores user memories/facts that persist across chat sessions\n-- Auto-extracted from conversations by AI\n\nCREATE TABLE IF NOT EXISTS user_memories (\n  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,\n  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n  \n  -- Memory categorization\n  category TEXT NOT NULL DEFAULT 'general',\n  -- Categories: 'preference', 'fact', 'interest', 'communication_style', 'goal', 'context'\n  \n  -- The actual memory content\n  content TEXT NOT NULL,\n  \n  -- Source tracking\n  source_topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,\n  source_message_id TEXT,\n  \n  -- Importance for priority in context window (1-10)\n  importance INTEGER NOT NULL DEFAULT 5 CHECK (importance >= 1 AND importance <= 10),\n  \n  -- Frequency of relevance (auto-updated when memory is used)\n  usage_count INTEGER DEFAULT 0,\n  last_used_at TIMESTAMPTZ,\n  \n  -- Timestamps\n  accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Indexes for efficient querying\nCREATE INDEX IF NOT EXISTS idx_user_memories_user_id ON user_memories(user_id);\nCREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category);\nCREATE INDEX IF NOT EXISTS idx_user_memories_importance ON user_memories(importance DESC);\nCREATE INDEX IF NOT EXISTS idx_user_memories_user_category ON user_memories(user_id, category);\n"
+      "-- Cross-Session User Memory\n-- Stores user memories/facts that persist across chat sessions\n-- Auto-extracted from conversations by AI\n\nCREATE TABLE IF NOT EXISTS user_memories (\n  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,\n  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n  \n  -- Memory categorization\n  category TEXT NOT NULL DEFAULT 'general',\n  -- Categories: 'preference', 'fact', 'interest', 'communication_style', 'goal', 'context'\n  \n  -- The actual memory content\n  content TEXT NOT NULL,\n  \n  -- Source tracking\n  source_topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,\n  source_message_id TEXT,\n  \n  -- Importance for priority in context window (1-10)\n  importance INTEGER NOT NULL DEFAULT 5 CHECK (importance >= 1 AND importance <= 10),\n  \n  -- Frequency of relevance (auto-updated when memory is used)\n  usage_count INTEGER DEFAULT 0,\n  last_used_at TIMESTAMPTZ,\n  \n  -- Timestamps\n  accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n",
+      "\n-- Indexes for efficient querying\nCREATE INDEX IF NOT EXISTS idx_user_memories_user_id ON user_memories(user_id);\n",
+      "\nCREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category);\n",
+      "\nCREATE INDEX IF NOT EXISTS idx_user_memories_importance ON user_memories(importance DESC);\n",
+      "\nCREATE INDEX IF NOT EXISTS idx_user_memories_user_category ON user_memories(user_id, category);\n"
     ],
     "bps": true,
     "folderMillis": 1767259200000,
-    "hash": "bca27d140bca6c42b7d37b5ba66036e85c0f483b2e062195c87299dd2505245a"
+    "hash": "0a0076d42febee28b4d1868c0bd9bacaf9c49befb9da84201e498ee089f66956"
   },
   {
     "sql": [
