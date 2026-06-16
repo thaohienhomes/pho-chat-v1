@@ -22,8 +22,10 @@ export const LobeOpenRouterAI = createOpenAICompatibleRuntime({
         const modelConfig = OpenRouterModels.find((m) => m.id === model);
         const reasoningConfig = modelConfig as any;
 
-        // Only add reasoning if the model supports it
-        if (reasoningConfig?.reasoning) {
+        // Only add reasoning if the model supports it.
+        // model-bank nests this under `abilities.reasoning` — the old top-level
+        // read was always undefined, so reasoning was never attached.
+        if (reasoningConfig?.abilities?.reasoning) {
           const defaultMaxOutput = reasoningConfig?.maxOutput as number | undefined;
 
           // 配置优先级：用户设置 > 模型配置 > 硬编码默认值

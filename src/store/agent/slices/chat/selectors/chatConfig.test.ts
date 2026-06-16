@@ -39,13 +39,13 @@ describe('agentChatConfigSelectors', () => {
       expect(agentChatConfigSelectors.enableHistoryCount(state)).toBe(false);
     });
 
-    it('should return false value when enable context caching with claude models', () => {
+    it('should return true value (bounded history) when enable context caching with claude models', () => {
       const state = createMockState(
         { disableContextCaching: false, enableHistoryCount: true },
         { model: 'claude-3-7-sonnet-20250219' },
       );
 
-      expect(agentChatConfigSelectors.enableHistoryCount(merge(state))).toBe(false);
+      expect(agentChatConfigSelectors.enableHistoryCount(merge(state))).toBe(true);
     });
 
     it('should return true value when enable context caching with other models', () => {

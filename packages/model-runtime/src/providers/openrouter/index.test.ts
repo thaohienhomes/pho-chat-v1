@@ -117,7 +117,7 @@ describe('LobeOpenRouterAI', () => {
       // Act
       const result = await instance.chat({
         messages: [{ content: 'Hello', role: 'user' }],
-        model: 'mistralai/mistral-7b-instruct:free',
+        model: 'deepseek/deepseek-chat-v3.1',
         temperature: 0.7,
         thinking: {
           type: 'enabled',
@@ -129,7 +129,7 @@ describe('LobeOpenRouterAI', () => {
       expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [{ content: 'Hello', role: 'user' }],
-          model: 'mistralai/mistral-7b-instruct:free',
+          model: 'deepseek/deepseek-chat-v3.1',
           reasoning: {
             max_tokens: 1500,
           },

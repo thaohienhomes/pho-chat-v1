@@ -217,12 +217,8 @@ describe('POST handler', () => {
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
         body: {
-          error: {
-            errorMessage: 'Something went wrong',
-            errorType: 500,
-          },
-          errorMessage: 'Something went wrong',
-          provider: 'test-provider',
+          error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+          provider: 'pho-chat',
         },
         errorType: 500,
       });
