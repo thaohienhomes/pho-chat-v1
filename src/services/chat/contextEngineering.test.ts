@@ -4,6 +4,38 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { contextEngineering } from './contextEngineering';
 import * as helpers from './helper';
 
+// Phở Chat fork injects this default system persona whenever the caller does
+// not provide a custom systemRole. Mirror it here so expectations can account
+// for the prepended system message. Keep in sync with PHO_CHAT_DEFAULT_SYSTEM_PROMPT
+// in contextEngineering.ts.
+const PHO_CHAT_DEFAULT_SYSTEM_PROMPT = `You are Phở Chat — a helpful, warm, and knowledgeable AI assistant. Your personality is friendly and conversational, like a smart friend who genuinely enjoys helping.
+
+<response_guidelines>
+- Be concise but thorough. Start with a direct answer, then add helpful context.
+- Use clear structure: headings, bullet points, or numbered lists when it helps readability.
+- When explaining complex topics, use analogies or examples the user can relate to.
+- Show genuine interest in the user's question — acknowledge their context when relevant.
+- Match the user's language (Vietnamese, English, or mixed) naturally.
+- For factual claims, mention your confidence level or note when information might be outdated.
+</response_guidelines>
+
+<follow_up>
+End your responses with 1-2 natural follow-up suggestions when appropriate. Frame them as helpful next steps, not generic questions. Examples:
+- "Bạn có muốn tôi giải thích thêm về phần [X] không?"
+- "Nếu cần, tôi có thể giúp bạn [specific action] nha."
+- "Would you like me to dive deeper into [specific aspect]?"
+Skip follow-ups for simple factual answers or when the conversation naturally concludes.
+</follow_up>
+
+<tone>
+- Warm but professional — not overly casual or robotic
+- Use emoji sparingly (1-2 per response max) for warmth, not decoration
+- Avoid filler phrases like "Certainly!", "Of course!", "Great question!"
+- Be direct and authentic
+</tone>`;
+
+const phoSystemMessage = { content: PHO_CHAT_DEFAULT_SYSTEM_PROMPT, role: 'system' };
+
 // Mock VARIABLE_GENERATORS
 vi.mock('@/utils/client/parserPlaceholder', () => ({
   VARIABLE_GENERATORS: {
@@ -79,6 +111,7 @@ describe('contextEngineering', () => {
       });
 
       expect(output).toEqual([
+        phoSystemMessage,
         {
           content: [
             {
@@ -146,6 +179,7 @@ describe('contextEngineering', () => {
       });
 
       expect(output).toEqual([
+        phoSystemMessage,
         {
           content: [
             {
@@ -229,6 +263,7 @@ describe('contextEngineering', () => {
     });
 
     expect(result).toEqual([
+      phoSystemMessage,
       {
         content: [
           {
@@ -325,7 +360,8 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(result[0].content).toEqual([
+      // Index 0 is the injected Phở Chat default system message.
+      expect(result[1].content).toEqual([
         { text: 'Here is an image.', type: 'text' },
         { image_url: { detail: 'auto', url: 'http://example.com/image.png' }, type: 'image_url' },
       ]);
@@ -352,7 +388,8 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(result[0].content).toEqual([
+      // Index 0 is the injected Phở Chat default system message.
+      expect(result[1].content).toEqual([
         { image_url: { detail: 'auto', url: 'http://example.com/image.png' }, type: 'image_url' },
       ]);
     });
@@ -388,8 +425,9 @@ describe('contextEngineering', () => {
       provider: 'openai',
     });
 
-    expect(result[0].tool_calls).toBeUndefined();
-    expect(result[0].content).toBe('I have a tool call.');
+    // Index 0 is the injected Phở Chat default system message.
+    expect(result[1].tool_calls).toBeUndefined();
+    expect(result[1].content).toBe('I have a tool call.');
   });
 
   describe('Process placeholder variables', () => {
@@ -419,10 +457,11 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(result[0].content).toBe(
+      // Index 0 is the injected Phở Chat default system message.
+      expect(result[1].content).toBe(
         'Hello TestUser, today is 2023-12-25 and the time is 14:30:45',
       );
-      expect(result[1].content).toBe('Hi there! Your random number is 12345');
+      expect(result[2].content).toBe('Hi there! Your random number is 12345');
     });
 
     it('should process placeholder variables in array content', async () => {
@@ -452,8 +491,9 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(Array.isArray(result[0].content)).toBe(true);
-      const content = result[0].content as any[];
+      // Index 0 is the injected Phở Chat default system message.
+      expect(Array.isArray(result[1].content)).toBe(true);
+      const content = result[1].content as any[];
       expect(content[0].text).toBe('Hello TestUser, today is 2023-12-25');
       expect(content[1].image_url.url).toBe('data:image/png;base64,abc123');
     });
@@ -476,7 +516,8 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(result[0].content).toBe('Hello TestUser, missing: {{missing_var}}');
+      // Index 0 is the injected Phở Chat default system message.
+      expect(result[1].content).toBe('Hello TestUser, missing: {{missing_var}}');
     });
 
     it('should not modify messages without placeholder variables', async () => {
@@ -497,7 +538,8 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(result[0].content).toBe('Hello there, no variables here');
+      // Index 0 is the injected Phở Chat default system message.
+      expect(result[1].content).toBe('Hello there, no variables here');
     });
 
     it('should process placeholder variables combined with other processors', async () => {
@@ -528,8 +570,9 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      expect(Array.isArray(result[0].content)).toBe(true);
-      const content = result[0].content as any[];
+      // Index 0 is the injected Phở Chat default system message.
+      expect(Array.isArray(result[1].content)).toBe(true);
+      const content = result[1].content as any[];
 
       // Should contain processed placeholder variables in the text content
       expect(content[0].text).toContain('Hello TestUser, check this image from 2023-12-25');
@@ -598,9 +641,10 @@ describe('contextEngineering', () => {
         provider: 'openai', // Should keep last 2 messages
       });
 
-      // Should only keep the last 2 messages
-      expect(result).toHaveLength(4);
+      // Should keep the last 4 messages, plus the injected Phở Chat system message
+      expect(result).toHaveLength(5);
       expect(result).toEqual([
+        phoSystemMessage,
         { content: 'Response 1', role: 'assistant' },
         { content: 'Message 2', role: 'user' },
         { content: 'Response 2', role: 'assistant' },
@@ -637,6 +681,7 @@ describe('contextEngineering', () => {
 
       // Should apply template to user message only
       expect(result).toEqual([
+        phoSystemMessage,
         {
           content: 'Template: Original user input - End',
           role: 'user',
@@ -646,7 +691,7 @@ describe('contextEngineering', () => {
           role: 'assistant',
         },
       ]);
-      expect(result[1].content).toBe('Assistant response'); // Unchanged
+      expect(result[2].content).toBe('Assistant response'); // Unchanged
     });
 
     it('should inject system role at the beginning', async () => {
@@ -748,8 +793,9 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      // Should pass message unchanged
+      // Should pass message unchanged, with the injected Phở Chat system message
       expect(result).toEqual([
+        phoSystemMessage,
         {
           content: 'Simple message',
           role: 'user',
@@ -827,8 +873,10 @@ describe('contextEngineering', () => {
         provider: 'openai',
       });
 
-      // Should keep original message when template fails
+      // Should keep original message when template fails, with the injected
+      // Phở Chat system message prepended.
       expect(result).toEqual([
+        phoSystemMessage,
         {
           content: 'User message',
           role: 'user',
