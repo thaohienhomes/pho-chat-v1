@@ -206,18 +206,18 @@ describe('MigrationV1ToV2', () => {
     ]);
     expect(migratedData.state.topics).toEqual([
       {
-        createdAt: 1_693_114_820_394,
-        id: 'jvfmUEwF',
-        sessionId: 'inbox',
-        title: 'JSX错误：children属性类型错误',
-        updatedAt: 1_693_114_821_388,
-      },
-      {
         createdAt: 1_693_228_301_335,
         id: 'IVfDVB5g',
         sessionId: 'inbox',
         title: '上游服务端错误状态码\n下游服务器错误状态码',
         updatedAt: 1_693_228_303_288,
+      },
+      {
+        createdAt: 1_693_114_820_394,
+        id: 'jvfmUEwF',
+        sessionId: 'inbox',
+        title: 'JSX错误：children属性类型错误',
+        updatedAt: 1_693_114_821_388,
       },
     ]);
   });

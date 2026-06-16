@@ -4,17 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { useOnPluginStateUpdate } from './pluginState';
 
-const noopMessageHandler = () => {};
-
 describe('useOnPluginStateUpdate', () => {
   // Mock for the callback function to be used in tests
   const mockCallback = vi.fn();
 
+  // The hook removes its own `message` listener on unmount, so the afterEach
+  // only needs to reset the spy.
   afterEach(() => {
-    // Reset the mock callback after each test
     mockCallback.mockReset();
-    // Ensure no event listeners are left hanging after each test
-    window.removeEventListener('message', noopMessageHandler);
   });
 
   it('calls the callback when a PluginChannel update message is received', () => {

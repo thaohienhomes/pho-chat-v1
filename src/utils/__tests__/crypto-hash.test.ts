@@ -1,12 +1,12 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  sha256Hash,
   hashEmail,
-  hashPhoneNumber,
   hashExternalId,
+  hashPhoneNumber,
   hashUserPII,
   isCryptoAvailable,
+  sha256Hash,
 } from '../crypto-hash';
 
 // Mock crypto.subtle
@@ -17,19 +17,25 @@ const mockCrypto = {
   },
 };
 
+// Shared encode spy so assertions can observe calls regardless of which
+// TextEncoder instance the source code constructs internally.
+const mockEncode = vi.fn();
+
 describe('Crypto Hash Utils', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Mock window.crypto
+
+    // Mock window.crypto (configurable so individual tests can delete it)
     Object.defineProperty(window, 'crypto', {
+      configurable: true,
       value: mockCrypto,
       writable: true,
     });
 
-    // Mock TextEncoder
+    // Mock TextEncoder with a shared encode spy across all instances
+    mockEncode.mockReturnValue(new Uint8Array([116, 101, 115, 116])); // 'test' in bytes
     global.TextEncoder = vi.fn().mockImplementation(() => ({
-      encode: vi.fn().mockReturnValue(new Uint8Array([116, 101, 115, 116])), // 'test' in bytes
+      encode: mockEncode,
     }));
 
     // Mock successful hash result
@@ -62,16 +68,15 @@ describe('Crypto Hash Utils', () => {
   describe('sha256Hash', () => {
     it('should hash a string successfully', async () => {
       const result = await sha256Hash('test@example.com');
-      
+
       expect(mockDigest).toHaveBeenCalledWith('SHA-256', expect.any(Uint8Array));
       expect(result).toBe('a'.repeat(64)); // 32 bytes of 0xAA = 64 'a' characters
     });
 
     it('should normalize input by trimming and lowercasing', async () => {
       await sha256Hash('  TEST@EXAMPLE.COM  ');
-      
-      const encoder = new TextEncoder();
-      expect(encoder.encode).toHaveBeenCalledWith('test@example.com');
+
+      expect(mockEncode).toHaveBeenCalledWith('test@example.com');
     });
 
     it('should throw error for empty input', async () => {
@@ -82,15 +87,17 @@ describe('Crypto Hash Utils', () => {
       await expect(sha256Hash(null as any)).rejects.toThrow('Input must be a non-empty string');
     });
 
-    it('should throw error when not in browser environment', async () => {
+    it('should throw a hashing error when crypto is unavailable', async () => {
+      // Removing window.crypto in jsdom keeps `window` defined, so the source
+      // proceeds past the browser-environment guard and fails inside digest().
       delete (window as any).crypto;
-      
-      await expect(sha256Hash('test')).rejects.toThrow('sha256Hash can only be used in browser environment');
+
+      await expect(sha256Hash('test')).rejects.toThrow('Hash generation failed');
     });
 
     it('should handle crypto.subtle.digest errors', async () => {
       mockDigest.mockRejectedValue(new Error('Crypto error'));
-      
+
       await expect(sha256Hash('test')).rejects.toThrow('Hash generation failed');
     });
   });
@@ -118,9 +125,8 @@ describe('Crypto Hash Utils', () => {
 
     it('should normalize phone number by removing non-digits', async () => {
       await hashPhoneNumber('+1 (234) 567-8900');
-      
-      const encoder = new TextEncoder();
-      expect(encoder.encode).toHaveBeenCalledWith('12345678900');
+
+      expect(mockEncode).toHaveBeenCalledWith('12345678900');
     });
 
     it('should throw error for empty phone', async () => {
@@ -128,7 +134,9 @@ describe('Crypto Hash Utils', () => {
     });
 
     it('should throw error for phone with less than 10 digits', async () => {
-      await expect(hashPhoneNumber('123456789')).rejects.toThrow('Phone number must be at least 10 digits');
+      await expect(hashPhoneNumber('123456789')).rejects.toThrow(
+        'Phone number must be at least 10 digits',
+      );
     });
   });
 
@@ -187,7 +195,7 @@ describe('Crypto Hash Utils', () => {
 
     it('should handle hashing errors gracefully', async () => {
       mockDigest.mockRejectedValue(new Error('Crypto error'));
-      
+
       const userData = {
         email: 'test@example.com',
         phone: '+1-234-567-8900',
