@@ -37,6 +37,12 @@ vi.mock('i18next', () => ({
   t: vi.fn((key) => key),
 }));
 
+// pho.chat prepends bundled builtin plugins (PubMed, ArXiv, etc.) to the store
+// list. Stub them out so these tests assert purely on the mocked store data.
+vi.mock('@/config/bundledPlugins', () => ({
+  BUNDLED_PLUGINS: [],
+}));
+
 const pluginManifestMock = {
   $schema: '../node_modules/@lobehub/chat-plugin-sdk/schema.json',
   api: [

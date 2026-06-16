@@ -11,6 +11,11 @@ import { DallEImageItem } from '@/types/tool/dalle';
 
 import { useChatStore } from '../../../store';
 
+const updateFunction = (draft: any) => {
+  draft[0].previewUrl = 'new-url';
+  draft[0].imageId = 'new-id';
+};
+
 describe('chatToolSlice - dalle', () => {
   describe('generateImageFromPrompts', () => {
     it('should generate images from prompts, update items, and upload images', async () => {
@@ -73,10 +78,6 @@ describe('chatToolSlice - dalle', () => {
       const initialMessageContent = JSON.stringify([
         { imageId: 'old-id', previewUrl: 'old-url', prompt: 'test prompt' },
       ]);
-      const updateFunction = (draft: any) => {
-        draft[0].previewUrl = 'new-url';
-        draft[0].imageId = 'new-id';
-      };
       vi.spyOn(result.current, 'internal_updateMessageContent').mockResolvedValue(undefined);
 
       // 模拟 getMessageById 返回消息内容

@@ -18,21 +18,21 @@ vi.mock('@/libs/sepay', () => ({
   },
 }));
 
+const createWebhookPayload = (overrides = {}) => ({
+  amount: 100_000,
+  currency: 'VND',
+  description: 'Payment for premium subscription',
+  orderId: 'PHO_QR_123456',
+  signature: 'valid_signature_hash',
+  status: 'success',
+  timestamp: new Date().toISOString(),
+  transactionId: 'TXN_123456',
+  ...overrides,
+});
+
 describe.skip('POST /api/payment/sepay/webhook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  const createWebhookPayload = (overrides = {}) => ({
-    amount: 100_000,
-    currency: 'VND',
-    description: 'Payment for premium subscription',
-    orderId: 'PHO_QR_123456',
-    signature: 'valid_signature_hash',
-    status: 'success',
-    timestamp: new Date().toISOString(),
-    transactionId: 'TXN_123456',
-    ...overrides,
   });
 
   it('should return 400 if webhook payload is missing orderId', async () => {

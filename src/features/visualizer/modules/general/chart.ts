@@ -1,4 +1,3 @@
-/* eslint-disable */
 // Chart module guidelines — uses escaped backticks for code fences inside template literal
 
 export const chartModule = {

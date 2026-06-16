@@ -27,6 +27,55 @@ vi.mock('@/libs/logger', () => ({
   },
 }));
 
+const createMockSubscription = (overrides = {}) => ({
+  billingCycle: 'monthly',
+  cancelAtPeriodEnd: false,
+  currentPeriodEnd: new Date('2025-12-31'),
+  currentPeriodStart: new Date('2024-12-31'),
+  id: 'sub_123',
+  planId: 'free',
+  status: 'active',
+  userId: 'user_123',
+  ...overrides,
+});
+
+const createMockLifetimeSubscription = (overrides = {}) => ({
+  billingCycle: 'yearly',
+  cancelAtPeriodEnd: true,
+  currentPeriodEnd: new Date('2025-12-31T23:59:59Z'),
+  currentPeriodStart: new Date('2024-12-31T00:00:00Z'),
+  id: 'sub_123',
+  planId: 'lifetime',
+  status: 'active',
+  userId: 'user_123',
+  ...overrides,
+});
+
+const setupMockDB = async (subscriptions: any[]) => {
+  const { auth } = await import('@clerk/nextjs/server');
+  const { getServerDB } = await import('@/database/server');
+
+  vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
+  vi.mocked(getServerDB).mockResolvedValue({
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(subscriptions),
+      }),
+    }),
+  } as any);
+};
+
+const createSub = (planId: string, start = new Date()) => ({
+  billingCycle: 'monthly',
+  cancelAtPeriodEnd: false,
+  currentPeriodEnd: new Date('2025-12-31'),
+  currentPeriodStart: start,
+  id: `sub_${planId}`,
+  planId,
+  status: 'active',
+  userId: 'user_123',
+});
+
 describe('GET /api/subscription/current', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,32 +115,6 @@ describe('GET /api/subscription/current', () => {
   });
 
   describe('Subscription prioritization', () => {
-    const createMockSubscription = (overrides = {}) => ({
-      billingCycle: 'monthly',
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: new Date('2025-12-31'),
-      currentPeriodStart: new Date('2024-12-31'),
-      id: 'sub_123',
-      planId: 'free',
-      status: 'active',
-      userId: 'user_123',
-      ...overrides,
-    });
-
-    const setupMockDB = async (subscriptions: any[]) => {
-      const { auth } = await import('@clerk/nextjs/server');
-      const { getServerDB } = await import('@/database/server');
-
-      vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
-      vi.mocked(getServerDB).mockResolvedValue({
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue(subscriptions),
-          }),
-        }),
-      } as any);
-    };
-
     it('should prioritize lifetime subscription over free subscription', async () => {
       const freeSubscription = createMockSubscription({
         currentPeriodStart: new Date('2024-01-01'),
@@ -216,18 +239,6 @@ describe('GET /api/subscription/current', () => {
   });
 
   describe('Response format', () => {
-    const createMockSubscription = (overrides = {}) => ({
-      billingCycle: 'yearly',
-      cancelAtPeriodEnd: true,
-      currentPeriodEnd: new Date('2025-12-31T23:59:59Z'),
-      currentPeriodStart: new Date('2024-12-31T00:00:00Z'),
-      id: 'sub_123',
-      planId: 'lifetime',
-      status: 'active',
-      userId: 'user_123',
-      ...overrides,
-    });
-
     it('should return correct subscription fields', async () => {
       const { auth } = await import('@clerk/nextjs/server');
       const { getServerDB } = await import('@/database/server');
@@ -236,7 +247,7 @@ describe('GET /api/subscription/current', () => {
       vi.mocked(getServerDB).mockResolvedValue({
         select: vi.fn().mockReturnValue({
           from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([createMockSubscription()]),
+            where: vi.fn().mockResolvedValue([createMockLifetimeSubscription()]),
           }),
         }),
       } as any);
@@ -258,7 +269,7 @@ describe('GET /api/subscription/current', () => {
       const { auth } = await import('@clerk/nextjs/server');
       const { getServerDB } = await import('@/database/server');
 
-      const subscription = createMockSubscription();
+      const subscription = createMockLifetimeSubscription();
       vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
       vi.mocked(getServerDB).mockResolvedValue({
         select: vi.fn().mockReturnValue({
@@ -280,31 +291,6 @@ describe('GET /api/subscription/current', () => {
   });
 
   describe('Edge cases with lifetime keyword detection', () => {
-    const setupMockDB = async (subscriptions: any[]) => {
-      const { auth } = await import('@clerk/nextjs/server');
-      const { getServerDB } = await import('@/database/server');
-
-      vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
-      vi.mocked(getServerDB).mockResolvedValue({
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue(subscriptions),
-          }),
-        }),
-      } as any);
-    };
-
-    const createSub = (planId: string, start = new Date()) => ({
-      billingCycle: 'monthly',
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: new Date('2025-12-31'),
-      currentPeriodStart: start,
-      id: `sub_${planId}`,
-      planId,
-      status: 'active',
-      userId: 'user_123',
-    });
-
     it('should detect custom_lifetime_plan as lifetime priority', async () => {
       await setupMockDB([createSub('free'), createSub('custom_lifetime_plan')]);
 

@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { useOnPluginSettingsUpdate } from './pluginSettings';
 
+const noopMessageHandler = () => {};
+
 describe('useOnPluginSettingsUpdate', () => {
   const mockCallback = vi.fn();
 
   afterEach(() => {
     mockCallback.mockReset();
-    window.removeEventListener('message', () => {});
+    window.removeEventListener('message', noopMessageHandler);
   });
 
   it('calls the callback when a PluginChannel updatePluginSettings message is received', () => {

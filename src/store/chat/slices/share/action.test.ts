@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { vi } from 'vitest';
 
 import { useChatStore } from '@/store/chat';
 

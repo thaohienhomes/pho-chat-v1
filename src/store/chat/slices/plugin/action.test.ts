@@ -334,7 +334,6 @@ describe('ChatPluginAction', () => {
       const invokeDefaultTypePluginMock = vi.fn().mockResolvedValue('Default tool response');
       const triggerAIMessageMock = vi.fn();
       const internal_createMessageMock = vi.fn().mockResolvedValue('tool-message-id');
-      const getTraceIdByMessageIdMock = vi.fn().mockReturnValue('trace-id');
 
       act(() => {
         useChatStore.setState({

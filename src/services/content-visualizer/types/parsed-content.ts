@@ -10,7 +10,7 @@ export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
 export interface ContentMetadata {
   authors?: string[];
   difficulty: DifficultyLevel;
-  language: 'en' | 'vi' | (string & {});
+  language: 'en' | 'vi' | (string & NonNullable<unknown>);
   source: ContentSource;
   sourceUrl?: string;
   title: string;

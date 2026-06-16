@@ -160,11 +160,8 @@ function heuristicScore(code: string): {
   // Banned phrases
   errors.push(...checkBannedPhrases(code));
 
-  // Labels
-  details.push(...checkLabelsAndAnnotations(code));
-
-  // Interactivity
-  details.push(...checkInteractivity(code));
+  // Labels and interactivity
+  details.push(...checkLabelsAndAnnotations(code), ...checkInteractivity(code));
 
   // Scene structure
   errors.push(...checkSceneStructure(code));
@@ -252,7 +249,9 @@ ${narrationScript ? `## Narration Script\n${narrationScript.slice(0, 1000)}` : '
           accuracy: Math.round(heuristic.score.accuracy * 0.4 + judgeResult.accuracy * 0.6),
           engagement: Math.round(heuristic.score.engagement * 0.4 + judgeResult.engagement * 0.6),
           overall: 0,
-          pedagogical: Math.round(heuristic.score.pedagogical * 0.4 + judgeResult.pedagogical * 0.6),
+          pedagogical: Math.round(
+            heuristic.score.pedagogical * 0.4 + judgeResult.pedagogical * 0.6,
+          ),
         };
         blended.overall = Math.round(
           (blended.pedagogical + blended.accuracy + blended.engagement) / 3,

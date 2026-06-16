@@ -30,7 +30,7 @@ vi.mock('@/libs/posthog-server', () => ({
 
 const buildRequest = (body: unknown): NextRequest =>
   ({
-    headers: new Headers({ host: 'pho.chat', 'x-forwarded-proto': 'https' }),
+    headers: new Headers({ 'host': 'pho.chat', 'x-forwarded-proto': 'https' }),
     json: async () => body,
   }) as unknown as NextRequest;
 
@@ -43,7 +43,7 @@ describe('POST /api/subscription/upgrade — bypassPayment hotfix', () => {
     const { auth } = await import('@clerk/nextjs/server');
     vi.mocked(auth).mockResolvedValue({ userId: null } as any);
 
-    const res = await POST(buildRequest({ newPlanId: 'vn_pro', billingCycle: 'monthly' }));
+    const res = await POST(buildRequest({ billingCycle: 'monthly', newPlanId: 'vn_pro' }));
     expect(res.status).toBe(401);
   });
 
@@ -53,12 +53,12 @@ describe('POST /api/subscription/upgrade — bypassPayment hotfix', () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_normal' } as any);
 
     const res = await POST(
-      buildRequest({ newPlanId: 'vn_pro', billingCycle: 'monthly', bypassPayment: true }),
+      buildRequest({ billingCycle: 'monthly', bypassPayment: true, newPlanId: 'vn_pro' }),
     );
 
     expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.error).toMatch(/bypassPayment/i);
+    expect(body.error).toMatch(/bypasspayment/i);
     expect(captureServerEvent).toHaveBeenCalledWith(
       'billing_bypass_denied',
       'user_normal',
@@ -76,7 +76,7 @@ describe('POST /api/subscription/upgrade — bypassPayment hotfix', () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_normal' } as any);
 
     const res = await POST(
-      buildRequest({ newPlanId: 'vn_pro', billingCycle: 'monthly', bypassPayment: false }),
+      buildRequest({ billingCycle: 'monthly', bypassPayment: false, newPlanId: 'vn_pro' }),
     );
 
     expect(res.status).toBe(403);
@@ -86,7 +86,7 @@ describe('POST /api/subscription/upgrade — bypassPayment hotfix', () => {
     const { auth } = await import('@clerk/nextjs/server');
     vi.mocked(auth).mockResolvedValue({ userId: 'user_normal' } as any);
 
-    const res = await POST(buildRequest({ newPlanId: '', billingCycle: '' }));
+    const res = await POST(buildRequest({ billingCycle: '', newPlanId: '' }));
     // Missing fields → 400, not the 403 from the bypass guard. This proves
     // the bypass guard does not false-positive on legitimate traffic.
     expect(res.status).toBe(400);

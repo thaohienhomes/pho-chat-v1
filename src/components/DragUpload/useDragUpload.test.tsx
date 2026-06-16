@@ -23,11 +23,9 @@ vi.mock('antd', () => ({
 
 describe('useDragUpload', () => {
   let mockOnUploadFiles: Mock;
-  let mockMessage: { warning: Mock };
 
   beforeEach(() => {
     mockOnUploadFiles = vi.fn();
-    mockMessage = { warning: vi.fn() };
     vi.useFakeTimers();
     document.body.innerHTML = '';
 

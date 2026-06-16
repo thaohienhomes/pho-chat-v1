@@ -8,7 +8,7 @@ import ScientificResults from './ScientificResults';
 /**
  * Parse paper results from various API response formats
  */
-const parsePaperResults = (content: any, apiName?: string) => {
+const parsePaperResults = (content: any) => {
   if (!content) return { papers: [], query: undefined, totalResults: 0 };
 
   // Handle array directly
@@ -79,30 +79,28 @@ const parsePaperResults = (content: any, apiName?: string) => {
   return { papers: [], query: undefined, totalResults: 0 };
 };
 
-const ScientificSkillsRender = memo<BuiltinRenderProps>(
-  ({ content, apiName }) => {
-    const { papers, query, totalResults } = parsePaperResults(content, apiName);
+const ScientificSkillsRender = memo<BuiltinRenderProps>(({ content, apiName }) => {
+  const { papers, query, totalResults } = parsePaperResults(content);
 
-    // Determine if this is a list-type or single-item API
-    const isListApi = [
-      ScientificApiNames.searchPubMed,
-      ScientificApiNames.queryChEMBL,
-      ScientificApiNames.searchClinicalTrials,
-    ].includes(apiName || '');
+  // Determine if this is a list-type or single-item API
+  const isListApi = [
+    ScientificApiNames.searchPubMed,
+    ScientificApiNames.queryChEMBL,
+    ScientificApiNames.searchClinicalTrials,
+  ].includes(apiName || '');
 
-    const loading = !content;
+  const loading = !content;
 
-    return (
-      <ScientificResults
-        apiName={apiName}
-        loading={loading && isListApi}
-        papers={papers}
-        query={query}
-        totalResults={totalResults}
-      />
-    );
-  },
-);
+  return (
+    <ScientificResults
+      apiName={apiName}
+      loading={loading && isListApi}
+      papers={papers}
+      query={query}
+      totalResults={totalResults}
+    />
+  );
+});
 
 ScientificSkillsRender.displayName = 'ScientificSkillsRender';
 

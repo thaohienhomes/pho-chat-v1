@@ -100,11 +100,11 @@ const mockAssistantList = [
     author: 'Test Author 2',
     category: 'productivity',
     // Changed to same category for related items test
-createdAt: '2024-01-02T00:00:00Z',
-    
-description: 'Another test assistant',
-    
-identifier: 'assistant-2', 
+    createdAt: '2024-01-02T00:00:00Z',
+
+    description: 'Another test assistant',
+
+    identifier: 'assistant-2',
     knowledgeCount: 3,
     pluginCount: 1,
     tags: ['test', 'creative'],
@@ -115,11 +115,11 @@ identifier: 'assistant-2',
     author: 'Test Author 3',
     category: 'creativity',
     // Keep this for category filtering tests
-createdAt: '2024-01-03T00:00:00Z',
-    
-description: 'A creative assistant',
-    
-identifier: 'assistant-3', 
+    createdAt: '2024-01-03T00:00:00Z',
+
+    description: 'A creative assistant',
+
+    identifier: 'assistant-3',
     knowledgeCount: 2,
     pluginCount: 0,
     tags: ['test', 'creative'],
@@ -210,6 +210,11 @@ describe('DiscoverService', () => {
 
     service = new DiscoverService();
     service.market = mockMarket;
+
+    // pho.chat injects builtin "scientific" agents into the assistant list.
+    // These tests cover the marketplace list/sort/paginate logic, so stub the
+    // builtin items out to keep assertions focused on the mocked marketplace data.
+    vi.spyOn(service as any, '_getScientificAgentItems').mockReturnValue([]);
   });
 
   describe('Assistant Market', () => {

@@ -29,9 +29,9 @@ vi.stubGlobal(
 
 // Mock image processing utilities
 vi.mock('@/utils/fetch', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
 
-  return { ...(module as any), getMessageError: vi.fn() };
+  return { ...(mockedModule as any), getMessageError: vi.fn() };
 });
 vi.mock('@lobechat/utils', () => ({
   imageUrlToBase64: vi.fn(),
@@ -384,9 +384,9 @@ describe('ChatService', () => {
             imageList: [
               {
                 // Real local URL
-alt: 'local-image.png',
-                
-id: 'file1', 
+                alt: 'local-image.png',
+
+                id: 'file1',
                 url: 'http://127.0.0.1:3000/uploads/image.png',
               },
             ],
@@ -454,9 +454,9 @@ id: 'file1',
             imageList: [
               {
                 // Remote URL
-alt: 'remote-image.jpg',
-                
-id: 'file1', 
+                alt: 'remote-image.jpg',
+
+                id: 'file1',
                 url: 'https://example.com/remote-image.jpg',
               },
             ],
@@ -529,23 +529,23 @@ id: 'file1',
             imageList: [
               {
                 // Local URL
-alt: 'local1.jpg',
-                
-id: 'local1', 
+                alt: 'local1.jpg',
+
+                id: 'local1',
                 url: 'http://127.0.0.1:3000/local1.jpg',
               },
               {
                 // Remote URL
-alt: 'remote1.png',
-                
-id: 'remote1', 
+                alt: 'remote1.png',
+
+                id: 'remote1',
                 url: 'https://example.com/remote1.png',
               },
               {
                 // Another local URL
-alt: 'local2.gif',
-                
-id: 'local2', 
+                alt: 'local2.gif',
+
+                id: 'local2',
                 url: 'http://127.0.0.1:8080/local2.gif',
               },
             ],
@@ -1108,23 +1108,21 @@ id: 'local2',
   describe('fetchPresetTaskResult', () => {
     it('should handle successful chat completion response', async () => {
       // Mock getChatCompletion to simulate successful completion
-      const getChatCompletionSpy = vi
-        .spyOn(chatService, 'getChatCompletion')
-        .mockImplementation(async (params, options) => {
-          // Simulate successful response
-          if (options?.onFinish) {
-            options.onFinish('AI response', {
-              observationId: null,
-              toolCalls: undefined,
-              traceId: null,
-              type: 'done',
-            });
-          }
-          if (options?.onMessageHandle) {
-            options.onMessageHandle({ text: 'AI response', type: 'text' });
-          }
-          return new Response('');
-        });
+      vi.spyOn(chatService, 'getChatCompletion').mockImplementation(async (params, options) => {
+        // Simulate successful response
+        if (options?.onFinish) {
+          options.onFinish('AI response', {
+            observationId: null,
+            toolCalls: undefined,
+            traceId: null,
+            type: 'done',
+          });
+        }
+        if (options?.onMessageHandle) {
+          options.onMessageHandle({ text: 'AI response', type: 'text' });
+        }
+        return new Response('');
+      });
 
       const params = {
         messages: [{ content: 'Hello', role: 'user' as const }],
@@ -1163,15 +1161,13 @@ id: 'local2',
 
     it('should handle error in chat completion', async () => {
       // Mock getChatCompletion to simulate error
-      const getChatCompletionSpy = vi
-        .spyOn(chatService, 'getChatCompletion')
-        .mockImplementation(async (params, options) => {
-          // Simulate error response
-          if (options?.onErrorHandle) {
-            options.onErrorHandle({ message: 'translated_response.404', type: 404 });
-          }
-          return new Response('');
-        });
+      vi.spyOn(chatService, 'getChatCompletion').mockImplementation(async (params, options) => {
+        // Simulate error response
+        if (options?.onErrorHandle) {
+          options.onErrorHandle({ message: 'translated_response.404', type: 404 });
+        }
+        return new Response('');
+      });
 
       const params = {
         messages: [{ content: 'Hello', role: 'user' as const }],
@@ -1213,9 +1209,9 @@ describe('ChatService private methods', () => {
     it('should merge responseAnimation styles correctly', async () => {
       const { fetchSSE } = await import('@/utils/fetch');
       vi.mock('@/utils/fetch', async (importOriginal) => {
-        const module = await importOriginal();
+        const mockedModule = await importOriginal();
         return {
-          ...(module as any),
+          ...(mockedModule as any),
           fetchSSE: vi.fn(),
         };
       });

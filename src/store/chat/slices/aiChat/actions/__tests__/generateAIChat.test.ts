@@ -42,17 +42,17 @@ vi.mock('@/services/topic', () => ({
   },
 }));
 vi.mock('@/services/chat', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
 
   return {
     chatService: {
       createAssistantMessage: vi.fn(() => Promise.resolve('assistant-message')),
-      createAssistantMessageStream: (module as any).chatService.createAssistantMessageStream,
+      createAssistantMessageStream: (mockedModule as any).chatService.createAssistantMessageStream,
     },
   };
 });
 vi.mock('@/services/session', async (importOriginal) => {
-  const module = await importOriginal();
+  await importOriginal();
 
   return {
     sessionService: {
@@ -177,10 +177,10 @@ describe('chatMessage actions', () => {
         await act(async () => {
           useChatStore.setState({
             ...mockState,
-            
+
             activeTopicId: undefined,
             // Mock the currentChats selector to return a list that does not reach the threshold
-messagesMap: {
+            messagesMap: {
               [messageMapKey('session-id')]: Array.from(
                 { length: autoCreateTopicThreshold + 1 },
                 (_, i) => ({
@@ -260,10 +260,9 @@ messagesMap: {
           });
 
           useChatStore.setState({
-            
             activeTopicId: 'inbox',
             // Mock the currentChats selector to return a list that does not reach the threshold
-messagesMap: {
+            messagesMap: {
               [messageMapKey('inbox')]: [{ id: '1' }, { id: '2' }] as ChatMessage[],
             },
           });

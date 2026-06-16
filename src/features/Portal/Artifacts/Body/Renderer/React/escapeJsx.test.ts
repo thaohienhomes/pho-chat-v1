@@ -24,7 +24,6 @@ describe('escapeJsxTextContent', () => {
     });
 
     it('should escape < in text content', () => {
-      const input = 'return <p>a 3</p>';
       // The < before 3 would be caught as &lt;
       const result = escapeJsxTextContent('return <p>a &lt; 3</p>');
       // Already escaped input should pass through

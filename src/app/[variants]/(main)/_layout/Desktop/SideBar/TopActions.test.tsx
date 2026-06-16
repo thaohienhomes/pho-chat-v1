@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { useGlobalStore } from '@/store/global';

@@ -6,7 +6,10 @@ import { SessionGroups } from '@/types/session';
 import { DB_SessionGroup } from '../../schemas/sessionGroup';
 import { SessionGroupModel } from '../sessionGroup';
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 describe('SessionGroupModel', () => {
   let sessionGroupData: DB_SessionGroup;
@@ -126,7 +129,9 @@ describe('SessionGroupModel', () => {
 
     it('should return session groups sorted by createdAt when sort field does not exist', async () => {
       const group1 = await SessionGroupModel.create('group1');
-      await new Promise((resolve) => setTimeout(() => resolve(undefined), 300));
+      await new Promise((resolve) => {
+        setTimeout(() => resolve(undefined), 300);
+      });
       const group2 = await SessionGroupModel.create('group2');
 
       const fetchedGroups = await SessionGroupModel.query();
@@ -164,7 +169,9 @@ describe('SessionGroupModel', () => {
 
     it('should return session groups sorted by createdAt when sort fields are equal', async () => {
       const group1 = await SessionGroupModel.create('group1', 1);
-      await new Promise((resolve) => setTimeout(() => resolve(undefined), 300));
+      await new Promise((resolve) => {
+        setTimeout(() => resolve(undefined), 300);
+      });
       const group2 = await SessionGroupModel.create('group2', 1);
       const fetchedGroups = await SessionGroupModel.query();
       expect(fetchedGroups[0].id).toEqual(group2.id);

@@ -40,9 +40,11 @@ describe('checkAuth', () => {
   it('should return unauthorized error if no authorization header', async () => {
     await checkAuth(mockHandler)(mockRequest, mockOptions);
 
+    // PHO-249: auth failures return a sanitized message (no internal error
+    // details leaked) and a fixed `pho-chat` provider id.
     expect(createErrorResponse).toHaveBeenCalledWith(ChatErrorType.Unauthorized, {
-      error: AgentRuntimeError.createError(ChatErrorType.Unauthorized),
-      provider: 'mock',
+      error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+      provider: 'pho-chat',
     });
     expect(mockHandler).not.toHaveBeenCalled();
   });
@@ -55,8 +57,8 @@ describe('checkAuth', () => {
     await checkAuth(mockHandler)(mockRequest, mockOptions);
 
     expect(createErrorResponse).toHaveBeenCalledWith(ChatErrorType.Unauthorized, {
-      error: mockError,
-      provider: 'mock',
+      error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+      provider: 'pho-chat',
     });
     expect(mockHandler).not.toHaveBeenCalled();
   });
@@ -72,8 +74,8 @@ describe('checkAuth', () => {
     await checkAuth(mockHandler)(mockRequest, mockOptions);
 
     expect(createErrorResponse).toHaveBeenCalledWith(ChatErrorType.Unauthorized, {
-      error: mockError,
-      provider: 'mock',
+      error: { message: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.' },
+      provider: 'pho-chat',
     });
     expect(mockHandler).not.toHaveBeenCalled();
   });

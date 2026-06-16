@@ -397,10 +397,8 @@ describe('GenerationTopicAction', () => {
 
       vi.mocked(generationTopicService.getAllGenerationTopics).mockResolvedValue(topics);
 
-      let hookResult: any;
-
       await act(async () => {
-        const { result } = renderHook(() => {
+        renderHook(() => {
           const store = useImageStore();
           // Actually call the SWR hook to trigger the service call
           const swrResult = store.useFetchGenerationTopics(true);
@@ -412,8 +410,6 @@ describe('GenerationTopicAction', () => {
 
           return swrResult;
         });
-
-        hookResult = result;
       });
 
       // Wait for service to be called and state to be updated

@@ -212,9 +212,14 @@ describe('AgentSlice', () => {
   describe('useFetchInboxAgentConfig', () => {
     it('should merge DEFAULT_AGENT_CONFIG and update defaultAgentConfig and isDefaultAgentConfigInit on success', async () => {
       const { result } = renderHook(() => useAgentStore());
-      vi.spyOn(sessionService, 'getSessionConfig').mockResolvedValue({
-        model: 'gemini-pro',
-      } as any);
+      // reset first: an earlier `useFetchAgentConfig` test queued a
+      // `mockResolvedValueOnce` that SWR's once-only fetch deduped (never consumed),
+      // which would otherwise leak into this inbox fetch.
+      vi.spyOn(sessionService, 'getSessionConfig')
+        .mockReset()
+        .mockResolvedValue({
+          model: 'gemini-pro',
+        } as any);
 
       renderHook(() => result.current.useInitInboxAgentStore(true));
 
@@ -241,7 +246,9 @@ describe('AgentSlice', () => {
     it('should not modify state on failure', async () => {
       const { result } = renderHook(() => useAgentStore());
 
-      vi.spyOn(globalService, 'getDefaultAgentConfig').mockRejectedValueOnce(new Error());
+      vi.spyOn(globalService, 'getDefaultAgentConfig').mockRejectedValueOnce(
+        new Error('failed to fetch default agent config'),
+      );
 
       renderHook(() => result.current.useInitInboxAgentStore(true));
 

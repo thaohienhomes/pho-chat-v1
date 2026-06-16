@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DBModel } from '@/database/_deprecated/core/types/db';
 import { CreateMessageParams, MessageModel } from '@/database/_deprecated/models/message';

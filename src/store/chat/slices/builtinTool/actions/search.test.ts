@@ -22,6 +22,14 @@ vi.mock('@/store/chat/selectors', () => ({
   },
 }));
 
+function mockGetMessageById(message: ChatMessage | undefined) {
+  return function getMessageByIdImpl() {
+    return function selectMessage() {
+      return message;
+    };
+  };
+}
+
 describe('search actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -285,7 +293,7 @@ describe('search actions', () => {
       };
 
       vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(
-        () => () => mockMessage as ChatMessage,
+        mockGetMessageById(mockMessage as ChatMessage),
       );
 
       const { result } = renderHook(() => useChatStore());
@@ -315,7 +323,7 @@ describe('search actions', () => {
     });
 
     it('should not save if message not found', async () => {
-      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(() => () => undefined);
+      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(mockGetMessageById(undefined));
 
       const { result } = renderHook(() => useChatStore());
       const { saveSearchResult } = result.current;

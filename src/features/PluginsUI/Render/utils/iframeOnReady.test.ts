@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { useOnPluginReadyForInteraction } from './iframeOnReady';
 
+const noopMessageHandler = () => {};
+
 describe('useOnPluginReadyForInteraction', () => {
   const mockOnReady = vi.fn();
 
   afterEach(() => {
     mockOnReady.mockReset();
-    window.removeEventListener('message', () => {});
+    window.removeEventListener('message', noopMessageHandler);
   });
 
   it('sets readyForRender to true when a PluginChannel.pluginReadyForRender message is received', async () => {

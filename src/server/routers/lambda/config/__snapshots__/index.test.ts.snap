@@ -94,23 +94,19 @@ exports[`configRouter > getGlobalConfig > Model Provider env > OPENAI_MODEL_LIST
 
 exports[`configRouter > getGlobalConfig > Model Provider env > OPENROUTER_MODEL_LIST > custom deletion, addition, and renaming of models 1`] = `
 {
-  "enabled": false,
+  "enabled": undefined,
   "enabledModels": [
     "meta-llama/llama-3.1-8b-instruct:free",
     "google/gemma-2-9b-it:free",
   ],
   "serverModelCards": [
     {
-      "contextWindowTokens": 32768,
-      "description": "LLaMA 3.1 提供多语言支持，是业界领先的生成模型之一。",
-      "displayName": "Llama 3.1 8B (Free)",
+      "displayName": "meta-llama/llama-3.1-8b-instruct:free",
       "enabled": true,
       "id": "meta-llama/llama-3.1-8b-instruct:free",
     },
     {
-      "contextWindowTokens": 8192,
-      "description": "Gemma 2 是Google轻量化的开源文本模型系列。",
-      "displayName": "Gemma 2 9B (Free)",
+      "displayName": "google/gemma-2-9b-it:free",
       "enabled": true,
       "id": "google/gemma-2-9b-it:free",
     },

@@ -2,12 +2,7 @@ import dayjs from 'dayjs';
 import { Mock, describe, expect, it, vi } from 'vitest';
 
 import { CreateMessageParams, MessageModel } from '@/database/_deprecated/models/message';
-import {
-  ChatMessage,
-  ChatMessageError,
-  ChatTTS,
-  ChatTranslate,
-} from '@/types/message';
+import { ChatMessage, ChatMessageError, ChatTTS, ChatTranslate } from '@/types/message';
 
 import { ClientService } from './_deprecated';
 
@@ -267,7 +262,6 @@ describe('MessageClientService', () => {
   describe('updateMessagePluginArguments', () => {
     it('should update the plugin arguments object of a message', async () => {
       // Setup
-      const key = 'stateKey';
       const value = 'stateValue';
       (MessageModel.updatePlugin as Mock).mockResolvedValue({});
 
@@ -281,7 +275,6 @@ describe('MessageClientService', () => {
     });
     it('should update the plugin arguments string of a message', async () => {
       // Setup
-      const key = 'stateKey';
       const value = 'stateValue';
       (MessageModel.updatePlugin as Mock).mockResolvedValue({});
 

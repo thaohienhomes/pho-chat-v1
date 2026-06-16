@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ChatStore } from '@/store/chat';
 import { initialState } from '@/store/chat/initialState';
@@ -142,9 +142,9 @@ describe('topicSelectors', () => {
       // Check favorite group
       expect(grouped[0]).toEqual({
         // This matches the mocked t function return
-children: topics.filter((t) => t.favorite),
-        
-id: 'favorite', 
+        children: topics.filter((t) => t.favorite),
+
+        id: 'favorite',
         title: 'favorite',
       });
 

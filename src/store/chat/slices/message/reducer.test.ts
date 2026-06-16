@@ -57,7 +57,7 @@ describe('messagesReducer', () => {
       expect(newState).toEqual(initialState);
     });
 
-    it('should not modify the state if the specified message does not exist', () => {
+    it('should return state equal to the initial state when the specified message does not exist', () => {
       const payload: MessageDispatch = {
         id: 'nonexistentMessage',
         type: 'updateMessage',
@@ -263,7 +263,7 @@ describe('messagesReducer', () => {
       const payload: MessageDispatch = {
         id: 'message1',
         // This is a user message, not an assistant message
-tool_call_id: 'tool1', 
+        tool_call_id: 'tool1',
         type: 'updateMessageTools',
         value: { identifier: 'updatedCalculator' },
       };
@@ -422,7 +422,7 @@ tool_call_id: 'tool1',
       const payload: MessageDispatch = {
         id: 'message1',
         // This is a user message
-tool_call_id: 'tool1', 
+        tool_call_id: 'tool1',
         type: 'deleteMessageTool',
       };
 

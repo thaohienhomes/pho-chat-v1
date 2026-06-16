@@ -9,6 +9,26 @@ export interface ShellThemeVars {
   textSecondary: string;
 }
 
+// Dark mode CSS overrides (shared between shell and complete HTML)
+const darkModeOverrides = `
+    /* Ensure SVG text and axis labels use theme text color */
+    svg text, svg .tick text, svg .label { fill: var(--color-text) !important; }
+    svg line, svg .grid line, svg .domain, svg .axis line, svg .axis path { stroke: var(--color-border) !important; }
+    svg circle.grid, svg polygon.grid, svg .gridline { stroke: var(--color-border) !important; fill: none !important; }
+    table { border-color: var(--color-border); }
+    th, td { border-color: var(--color-border) !important; color: var(--color-text); }
+    th { background: var(--color-surface) !important; }
+    input, select, textarea { color: var(--color-text); background: var(--color-surface); border-color: var(--color-border); }
+    button { color: var(--color-text); border-color: var(--color-border); }
+    button.active, button[aria-selected="true"], button[data-active], button[data-state="active"], button.selected, button.btn-primary, .tab-btn.active, .tab-button.active, [role="tab"][aria-selected="true"], [role="tab"].active { color: var(--color-bg) !important; }
+    button:not(.active):not([aria-selected="true"]):not(.selected):not(.btn-primary):not([data-active]):not([data-state="active"]) { background: transparent; }
+    progress { accent-color: var(--color-accent); }
+    .progress-track, [class*="track"], [class*="bg-gray"] { background: var(--color-surface) !important; }
+    a { color: var(--color-accent); }
+    h1, h2, h3, h4, h5, h6, strong, b { color: var(--color-text); }
+    canvas { display: block; }
+`;
+
 /**
  * Generates a streaming shell HTML that uses morphdom for smooth DOM diffing.
  *
@@ -194,26 +214,6 @@ export function generateStreamingShell(theme: ShellThemeVars): string {
 </body>
 </html>`;
 }
-
-// Dark mode CSS overrides (shared between shell and complete HTML)
-const darkModeOverrides = `
-    /* Ensure SVG text and axis labels use theme text color */
-    svg text, svg .tick text, svg .label { fill: var(--color-text) !important; }
-    svg line, svg .grid line, svg .domain, svg .axis line, svg .axis path { stroke: var(--color-border) !important; }
-    svg circle.grid, svg polygon.grid, svg .gridline { stroke: var(--color-border) !important; fill: none !important; }
-    table { border-color: var(--color-border); }
-    th, td { border-color: var(--color-border) !important; color: var(--color-text); }
-    th { background: var(--color-surface) !important; }
-    input, select, textarea { color: var(--color-text); background: var(--color-surface); border-color: var(--color-border); }
-    button { color: var(--color-text); border-color: var(--color-border); }
-    button.active, button[aria-selected="true"], button[data-active], button[data-state="active"], button.selected, button.btn-primary, .tab-btn.active, .tab-button.active, [role="tab"][aria-selected="true"], [role="tab"].active { color: var(--color-bg) !important; }
-    button:not(.active):not([aria-selected="true"]):not(.selected):not(.btn-primary):not([data-active]):not([data-state="active"]) { background: transparent; }
-    progress { accent-color: var(--color-accent); }
-    .progress-track, [class*="track"], [class*="bg-gray"] { background: var(--color-surface) !important; }
-    a { color: var(--color-accent); }
-    h1, h2, h3, h4, h5, h6, strong, b { color: var(--color-text); }
-    canvas { display: block; }
-`;
 
 /**
  * Generates complete HTML with widget code embedded directly.

@@ -16,7 +16,6 @@
  * - NEVER use localStorage, sessionStorage, or browser storage APIs
  * - NEVER import external CSS files
  */
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function ContentVisualization() {
@@ -91,6 +90,7 @@ export default function ContentVisualization() {
             aria-label="Close detail panel"
             className="mt-2 text-sm text-slate-400 hover:text-slate-200"
             onClick={() => setSelectedElement(null)}
+            type="button"
           >
             Close
           </button>
@@ -110,6 +110,7 @@ export default function ContentVisualization() {
               key={i}
               onClick={() => goToScene(i)}
               role="tab"
+              type="button"
             />
           ))}
         </div>
@@ -121,6 +122,7 @@ export default function ContentVisualization() {
             className="rounded-lg bg-slate-800 px-4 py-2 text-sm transition-colors hover:bg-slate-700 disabled:opacity-40"
             disabled={currentScene === 0}
             onClick={prevScene}
+            type="button"
           >
             Previous
           </button>
@@ -128,6 +130,7 @@ export default function ContentVisualization() {
             aria-label={isPlaying ? 'Pause' : 'Play'}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm transition-colors hover:bg-blue-500"
             onClick={togglePlay}
+            type="button"
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
@@ -136,6 +139,7 @@ export default function ContentVisualization() {
             className="rounded-lg bg-slate-800 px-4 py-2 text-sm transition-colors hover:bg-slate-700 disabled:opacity-40"
             disabled={currentScene === totalScenes - 1}
             onClick={nextScene}
+            type="button"
           >
             Next
           </button>

@@ -1,7 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
-import { ModelParamsSchema, RuntimeImageGenParams, extractDefaultValues , fluxSchnellParamsSchema , AIImageModelCard } from 'model-bank';
-
-
+import {
+  AIImageModelCard,
+  ModelParamsSchema,
+  RuntimeImageGenParams,
+  extractDefaultValues,
+  fluxSchnellParamsSchema,
+} from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useImageStore } from '@/store/image';
@@ -72,6 +76,24 @@ const initialTestState = {
   } satisfies ModelParamsSchema,
 };
 
+// Helper function to create test parameters
+const createTestParameters = (overrides: Partial<RuntimeImageGenParams> = {}) =>
+  ({
+    prompt: '',
+    width: 512,
+    height: 512,
+    ...overrides,
+  }) satisfies Partial<RuntimeImageGenParams>;
+
+// Helper function to create test schema
+const createTestSchema = (overrides: Partial<ModelParamsSchema> = {}) =>
+  ({
+    prompt: { default: '' },
+    width: { default: 512, min: 256, max: 2048 },
+    height: { default: 512, min: 256, max: 2048 },
+    ...overrides,
+  }) satisfies ModelParamsSchema;
+
 beforeEach(() => {
   vi.clearAllMocks();
   useImageStore.setState(initialTestState);
@@ -82,24 +104,6 @@ afterEach(() => {
 });
 
 describe('GenerationConfigAction', () => {
-  // Helper function to create test parameters
-  const createTestParameters = (overrides: Partial<RuntimeImageGenParams> = {}) =>
-    ({
-      prompt: '',
-      width: 512,
-      height: 512,
-      ...overrides,
-    }) satisfies Partial<RuntimeImageGenParams>;
-
-  // Helper function to create test schema
-  const createTestSchema = (overrides: Partial<ModelParamsSchema> = {}) =>
-    ({
-      prompt: { default: '' },
-      width: { default: 512, min: 256, max: 2048 },
-      height: { default: 512, min: 256, max: 2048 },
-      ...overrides,
-    }) satisfies ModelParamsSchema;
-
   describe('Parameter Management', () => {
     it('should update individual parameters via setParamOnInput', () => {
       const { result } = renderHook(() => useImageStore());
