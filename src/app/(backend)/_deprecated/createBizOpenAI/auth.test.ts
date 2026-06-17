@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { vi } from 'vitest';
+
 import { checkAuth } from './auth';
 
 describe('ACCESS_CODE', () => {

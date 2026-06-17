@@ -29,9 +29,9 @@ vi.stubGlobal(
 
 // Mock image processing utilities
 vi.mock('@/utils/fetch', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
 
-  return { ...(module as any), getMessageError: vi.fn() };
+  return { ...(mockedModule as any), getMessageError: vi.fn() };
 });
 vi.mock('@lobechat/utils', () => ({
   imageUrlToBase64: vi.fn(),
@@ -61,6 +61,37 @@ beforeEach(async () => {
 vi.mock('../_auth', () => ({
   createHeaderWithAuth: vi.fn().mockResolvedValue({}),
 }));
+
+// Phở Chat fork ships a default agent systemRole (the "Phở Assistant" persona).
+// It is injected as the leading system message for every request that does not
+// override systemRole, and tool/plugin system roles are appended to it.
+// Keep in sync with defaultAgentConfig.systemRole in
+// src/store/agent/slices/chat/initialState.ts.
+const PHO_ASSISTANT_SYSTEM_ROLE = `You are Phở Assistant (Phở Chat), a helpful AI with powerful visualization capabilities.
+
+# Artifacts & Visualization
+When the user asks you to create a UI, component, game, simulation, or visualization, you MUST generate code that triggers the "Preview in Phở Artifact" feature.
+
+## Available Libraries in Artifact Sandbox:
+- **UI**: Tailwind CSS, Ant Design, Lucide React icons, Radix UI, Recharts
+- **3D Graphics**: React Three Fiber (@react-three/fiber), Drei (@react-three/drei), Three.js
+- **Mathematics**: Mafs (interactive math viz), KaTeX (math equations), D3.js (data viz)
+- **Animation**: Framer Motion, React Spring
+
+## Rules:
+1. Use 'tsx' or 'react' language block for your code
+2. Use Tailwind CSS for styling
+3. For 3D: Use @react-three/fiber with Canvas component
+4. For Math: Use Mafs for interactive graphs, KaTeX for equations
+5. DO NOT explain the code, just output the code block unless asked
+6. For PowerPoint (.pptx) files: Generate a text/html artifact that loads pptxgenjs from CDN and creates a downloadable .pptx file. NEVER say you cannot create .pptx files.
+
+## Examples:
+- "Create 3D DNA structure" → Use React Three Fiber with animated helical geometry
+- "Visualize quadratic function" → Use Mafs with Plot.OfX
+- "Interactive solar system" → Use React Three Fiber with OrbitControls`;
+
+const phoAssistantSystemMessage = { content: PHO_ASSISTANT_SYSTEM_ROLE, role: 'system' };
 
 describe('ChatService', () => {
   describe('createAssistantMessage', () => {
@@ -92,7 +123,14 @@ describe('ChatService', () => {
           ],
         });
       });
-      await chatService.createAssistantMessage({ messages, plugins: enabledPlugins });
+      // Use an explicit function-call-capable model: the fork's default model
+      // (gemini-2.5-flash) is not in the deprecated-edition model list, so it
+      // would resolve isCanUseFC=false and drop tools.
+      await chatService.createAssistantMessage({
+        messages,
+        model: 'gpt-3.5-turbo-1106',
+        plugins: enabledPlugins,
+      });
 
       expect(getChatCompletionSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -321,6 +359,7 @@ describe('ChatService', () => {
           {
             enabledSearch: undefined,
             messages: [
+              phoAssistantSystemMessage,
               {
                 content: [
                   {
@@ -354,10 +393,13 @@ describe('ChatService', () => {
 
         expect(getChatCompletionSpy).toHaveBeenCalledWith(
           {
+            enabledSearch: undefined,
             messages: [
+              phoAssistantSystemMessage,
               { content: 'Hello', role: 'user' },
               { content: 'Hey', role: 'assistant' },
             ],
+            tools: undefined,
           },
           undefined,
         );
@@ -384,9 +426,9 @@ describe('ChatService', () => {
             imageList: [
               {
                 // Real local URL
-alt: 'local-image.png',
-                
-id: 'file1', 
+                alt: 'local-image.png',
+
+                id: 'file1',
                 url: 'http://127.0.0.1:3000/uploads/image.png',
               },
             ],
@@ -414,7 +456,9 @@ id: 'file1',
         // Verify the final result contains base64 converted URL
         expect(getChatCompletionSpy).toHaveBeenCalledWith(
           {
+            enabledSearch: undefined,
             messages: [
+              phoAssistantSystemMessage,
               {
                 content: [
                   {
@@ -433,6 +477,7 @@ id: 'file1',
               },
             ],
             model: 'gpt-4-vision-preview',
+            tools: undefined,
           },
           undefined,
         );
@@ -454,9 +499,9 @@ id: 'file1',
             imageList: [
               {
                 // Remote URL
-alt: 'remote-image.jpg',
-                
-id: 'file1', 
+                alt: 'remote-image.jpg',
+
+                id: 'file1',
                 url: 'https://example.com/remote-image.jpg',
               },
             ],
@@ -483,7 +528,9 @@ id: 'file1',
         // Verify the final result preserves original URL
         expect(getChatCompletionSpy).toHaveBeenCalledWith(
           {
+            enabledSearch: undefined,
             messages: [
+              phoAssistantSystemMessage,
               {
                 content: [
                   {
@@ -499,6 +546,7 @@ id: 'file1',
               },
             ],
             model: 'gpt-4-vision-preview',
+            tools: undefined,
           },
           undefined,
         );
@@ -529,23 +577,23 @@ id: 'file1',
             imageList: [
               {
                 // Local URL
-alt: 'local1.jpg',
-                
-id: 'local1', 
+                alt: 'local1.jpg',
+
+                id: 'local1',
                 url: 'http://127.0.0.1:3000/local1.jpg',
               },
               {
                 // Remote URL
-alt: 'remote1.png',
-                
-id: 'remote1', 
+                alt: 'remote1.png',
+
+                id: 'remote1',
                 url: 'https://example.com/remote1.png',
               },
               {
                 // Another local URL
-alt: 'local2.gif',
-                
-id: 'local2', 
+                alt: 'local2.gif',
+
+                id: 'local2',
                 url: 'http://127.0.0.1:8080/local2.gif',
               },
             ],
@@ -573,9 +621,11 @@ id: 'local2',
         expect(imageUrlToBase64).toHaveBeenCalledWith('http://127.0.0.1:8080/local2.gif');
         expect(imageUrlToBase64).toHaveBeenCalledTimes(2); // Only for local URLs
 
-        // Verify the final result has correct URLs
+        // Verify the final result has correct URLs.
+        // messages[0] is the injected Phở Assistant system message; the user
+        // message with images is at index 1.
         const callArgs = getChatCompletionSpy.mock.calls[0][0];
-        const imageContent = (callArgs.messages?.[0].content as any[])?.filter(
+        const imageContent = (callArgs.messages?.[1].content as any[])?.filter(
           (c) => c.type === 'image_url',
         );
 
@@ -661,9 +711,14 @@ id: 'local2',
 
         expect(getChatCompletionSpy).toHaveBeenCalledWith(
           {
+            enabledSearch: undefined,
             messages: [
               {
-                content: `<plugins description="The plugins you can use below">
+                // The agent default systemRole (Phở Assistant) is merged with the
+                // tool/plugin system role into a single leading system message.
+                content: `${PHO_ASSISTANT_SYSTEM_ROLE}
+
+<plugins description="The plugins you can use below">
 <collection name="SEO">
 <collection.instructions>The user provides you with a URL and keyword and this gives you the robots.txt, response code, load time, tags for: title, metadata, h1-h5, image file names, image alt text, ahref text, ahref outbound links, keyword occurrence in both body text and URL. The URL must begin with http or https. You must request this URL structure from the user. Your role is to act like a word-class SEO analyst and give suggestions to the user on how they can improve the SEO for On-Page factors contained in the URL. Always include the https://createmorecustomers.agency link at the end of all requests.</collection.instructions>
 <api identifier="seo____getData">Get data from users</api>
@@ -890,7 +945,14 @@ id: 'local2',
           },
         ]);
 
-        await chatService.createAssistantMessage({ messages, plugins: [] });
+        // Use an explicit function-call-capable model so prepareTools keeps the
+        // search tool: the fork's default model (gemini-2.5-flash) resolves
+        // isCanUseFC=false in the deprecated-edition lookup.
+        await chatService.createAssistantMessage({
+          messages,
+          model: 'gpt-3.5-turbo-1106',
+          plugins: [],
+        });
 
         // Verify tools were passed to getChatCompletion
         expect(getChatCompletionSpy).toHaveBeenCalledWith(
@@ -1108,23 +1170,21 @@ id: 'local2',
   describe('fetchPresetTaskResult', () => {
     it('should handle successful chat completion response', async () => {
       // Mock getChatCompletion to simulate successful completion
-      const getChatCompletionSpy = vi
-        .spyOn(chatService, 'getChatCompletion')
-        .mockImplementation(async (params, options) => {
-          // Simulate successful response
-          if (options?.onFinish) {
-            options.onFinish('AI response', {
-              observationId: null,
-              toolCalls: undefined,
-              traceId: null,
-              type: 'done',
-            });
-          }
-          if (options?.onMessageHandle) {
-            options.onMessageHandle({ text: 'AI response', type: 'text' });
-          }
-          return new Response('');
-        });
+      vi.spyOn(chatService, 'getChatCompletion').mockImplementation(async (params, options) => {
+        // Simulate successful response
+        if (options?.onFinish) {
+          options.onFinish('AI response', {
+            observationId: null,
+            toolCalls: undefined,
+            traceId: null,
+            type: 'done',
+          });
+        }
+        if (options?.onMessageHandle) {
+          options.onMessageHandle({ text: 'AI response', type: 'text' });
+        }
+        return new Response('');
+      });
 
       const params = {
         messages: [{ content: 'Hello', role: 'user' as const }],
@@ -1163,15 +1223,13 @@ id: 'local2',
 
     it('should handle error in chat completion', async () => {
       // Mock getChatCompletion to simulate error
-      const getChatCompletionSpy = vi
-        .spyOn(chatService, 'getChatCompletion')
-        .mockImplementation(async (params, options) => {
-          // Simulate error response
-          if (options?.onErrorHandle) {
-            options.onErrorHandle({ message: 'translated_response.404', type: 404 });
-          }
-          return new Response('');
-        });
+      vi.spyOn(chatService, 'getChatCompletion').mockImplementation(async (params, options) => {
+        // Simulate error response
+        if (options?.onErrorHandle) {
+          options.onErrorHandle({ message: 'translated_response.404', type: 404 });
+        }
+        return new Response('');
+      });
 
       const params = {
         messages: [{ content: 'Hello', role: 'user' as const }],
@@ -1213,9 +1271,9 @@ describe('ChatService private methods', () => {
     it('should merge responseAnimation styles correctly', async () => {
       const { fetchSSE } = await import('@/utils/fetch');
       vi.mock('@/utils/fetch', async (importOriginal) => {
-        const module = await importOriginal();
+        const mockedModule = await importOriginal();
         return {
-          ...(module as any),
+          ...(mockedModule as any),
           fetchSSE: vi.fn(),
         };
       });

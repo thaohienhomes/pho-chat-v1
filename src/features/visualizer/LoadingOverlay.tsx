@@ -7,30 +7,33 @@ import { Center } from 'react-layout-kit';
 const useStyles = createStyles(({ css, token }) => ({
   container: css`
     position: absolute;
-    inset: 0;
     z-index: 1;
+    inset: 0;
+
     background: ${token.colorBgContainer};
+
     transition: opacity 0.3s ease;
   `,
   dot: css`
     display: inline-block;
-    animation: dotPulse 1.4s ease-in-out infinite;
+    animation: dot-pulse 1.4s ease-in-out infinite;
 
-    @keyframes dotPulse {
+    @keyframes dot-pulse {
       0%,
       80%,
       100% {
         opacity: 0.3;
       }
+
       40% {
         opacity: 1;
       }
     }
   `,
   text: css`
+    user-select: none;
     font-size: 13px;
     color: ${token.colorTextSecondary};
-    user-select: none;
   `,
 }));
 

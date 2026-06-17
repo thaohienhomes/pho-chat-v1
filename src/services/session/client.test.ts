@@ -48,12 +48,6 @@ afterEach(async () => {
 });
 
 describe('SessionService', () => {
-  const mockSession = {
-    id: mockSessionId,
-    meta: { title: 'Mock Session' },
-    type: 'agent',
-  } as LobeAgentSession;
-
   describe('createSession', () => {
     it('should create a new session and return its id', async () => {
       // Setup

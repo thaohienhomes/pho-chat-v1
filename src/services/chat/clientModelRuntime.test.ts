@@ -39,9 +39,9 @@ vi.stubGlobal(
 );
 
 vi.mock('@/utils/fetch', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
 
-  return { ...(module as any), getMessageError: vi.fn() };
+  return { ...(mockedModule as any), getMessageError: vi.fn() };
 });
 
 // Mock image processing utilities

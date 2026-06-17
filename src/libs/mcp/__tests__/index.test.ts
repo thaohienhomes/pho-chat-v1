@@ -8,13 +8,13 @@ describe('MCPClient', () => {
     let mcpClient: MCPClient;
     const stdioConnection = {
       // Use node to run the compiled mock server
-args: ['mcp-hello-world@1.1.2'],
-      
-command: 'npx',
-      
-id: 'mcp-hello-world',
-      
-name: 'Stdio SDK Test Connection', 
+      args: ['mcp-hello-world@1.1.2'],
+
+      command: 'npx',
+
+      id: 'mcp-hello-world',
+
+      name: 'Stdio SDK Test Connection',
       type: 'stdio' as const, // Use the path to the compiled JS file
     };
 
@@ -24,7 +24,9 @@ name: 'Stdio SDK Test Connection',
       // Initialize the client - this starts the stdio process
       await mcpClient.initialize();
       // Add a small delay to allow the server process to fully start (optional, but can help)
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
     }, 30_000);
 
     afterEach(async () => {

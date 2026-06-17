@@ -130,7 +130,7 @@ describe('topicReducer', () => {
         },
       };
 
-      const newState = topicReducer(state, payload);
+      topicReducer(state, payload);
 
       expect(state).toEqual([]);
     });

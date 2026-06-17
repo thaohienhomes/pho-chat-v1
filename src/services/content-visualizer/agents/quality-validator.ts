@@ -5,18 +5,13 @@
  *
  * Critical for reliability — PRD target: 98% success rate by attempt 3.
  */
-
 import type { GeneratedCode } from '../types/generated-code';
 import type { Storyboard } from '../types/storyboard';
-
-import {
-  generateReactArtifact,
-  generateReactArtifactWithRetry,
-} from './react-artifact-generator';
 import { type LlmCallFn, scoreContent } from '../validators/content-scorer';
 import { validateRender } from '../validators/render-tester';
 import { validateSpatial } from '../validators/spatial-validator';
 import { validateSyntax } from '../validators/syntax-validator';
+import { generateReactArtifact, generateReactArtifactWithRetry } from './react-artifact-generator';
 
 /** Maximum retry attempts per PRD section 2.5. */
 const MAX_ATTEMPTS = 3;
@@ -84,13 +79,12 @@ export default function ContentVisualization() {
  * Run 4-stage validation pipeline on generated code.
  *
  * @param code - GeneratedCode to validate
- * @param llmCall - Optional LLM function for Stage 3 LLM judge
  * @returns Array of stage results
  */
-export function runValidationPipeline(
-  code: GeneratedCode,
-  llmCall?: LlmCallFn,
-): { allErrors: string[], stages: ValidationStageResult[]; } {
+export function runValidationPipeline(code: GeneratedCode): {
+  allErrors: string[];
+  stages: ValidationStageResult[];
+} {
   const stages: ValidationStageResult[] = [];
   const allErrors: string[] = [];
 
@@ -185,12 +179,7 @@ export async function validateWithRetry(
     if (attempt === 1) {
       code = await generateReactArtifact(storyboard, llmCall);
     } else {
-      code = await generateReactArtifactWithRetry(
-        storyboard,
-        accumulatedErrors,
-        attempt,
-        llmCall,
-      );
+      code = await generateReactArtifactWithRetry(storyboard, accumulatedErrors, attempt, llmCall);
     }
 
     // Run validation pipeline

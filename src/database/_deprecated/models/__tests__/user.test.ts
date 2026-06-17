@@ -36,7 +36,7 @@ describe('UserModel', () => {
   });
 
   it('should update a user record', async () => {
-    const result = await UserModel.create(userData);
+    await UserModel.create(userData);
 
     const newAvatar = 'new_avatar.png';
     await UserModel.updateAvatar(newAvatar);

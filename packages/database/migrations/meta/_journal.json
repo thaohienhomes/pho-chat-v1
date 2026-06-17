@@ -294,6 +294,48 @@
       "when": 1767000000000,
       "tag": "0041_ensure_shared_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1767086400000,
+      "tag": "0042_pho_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1767172800000,
+      "tag": "0043_add_recommendation_selections",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1767259200000,
+      "tag": "0044_add_user_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1767345600000,
+      "tag": "0045_drop_daily_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1767432000000,
+      "tag": "0046_add_missing_user_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1767518400000,
+      "tag": "0047_promo_activations",
+      "breakpoints": true
     }
   ],
   "version": "6"

@@ -7,7 +7,7 @@ import { EPubLoader } from '../index';
 
 function sanitizeDynamicFields(document: any[]) {
   for (const doc of document) {
-    doc.metadata.source && (doc.metadata.source = '');
+    if (doc.metadata.source) doc.metadata.source = '';
   }
   return document;
 }

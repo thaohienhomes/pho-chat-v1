@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import { parseBrowserLanguage } from './locale';
 
-describe('parseBrowserLanguage', () => {
-  // Helper function to create Headers with accept-language
-  const createHeaders = (acceptLanguage?: string) => {
-    const headers = new Headers();
-    if (acceptLanguage) {
-      headers.set('accept-language', acceptLanguage);
-    }
-    return headers;
-  };
+// Helper function to create Headers with accept-language
+const createHeaders = (acceptLanguage?: string) => {
+  const headers = new Headers();
+  if (acceptLanguage) {
+    headers.set('accept-language', acceptLanguage);
+  }
+  return headers;
+};
 
+describe('parseBrowserLanguage', () => {
   describe('when DEFAULT_LANG is en-US', () => {
     it('should return en-US for empty accept-language header', () => {
       const headers = createHeaders();

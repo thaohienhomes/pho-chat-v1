@@ -29,6 +29,8 @@ vi.mock('react-hotkeys-hook', () => ({
 let isMobileValue = false;
 const mockHotkey = 'mod+k';
 
+const getMockHotkey = () => mockHotkey;
+
 vi.mock('@/store/serverConfig', () => ({
   useServerConfigStore: (selector: (state: any) => any) => selector({ isMobile: isMobileValue }),
 }));
@@ -39,7 +41,7 @@ vi.mock('@/store/user', () => ({
 
 vi.mock('@/store/user/selectors', () => ({
   settingsSelectors: {
-    getHotkeyById: () => () => mockHotkey,
+    getHotkeyById: () => getMockHotkey,
   },
 }));
 

@@ -48,6 +48,14 @@ vi.mock('@/server/services/agent', () => ({
   })),
 }));
 
+// createUser also provisions a free subscription; stub it so the test does not
+// need a real database connection.
+vi.mock('@/server/services/subscription', () => ({
+  SubscriptionService: vi.fn().mockImplementation(() => ({
+    createFreeSubscription: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 let service: UserService;
 const mockUserId = 'test-user-id';
 const mockDB = {} as LobeChatDatabase;

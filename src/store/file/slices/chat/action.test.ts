@@ -1,7 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-
 import { useFileStore as useStore } from '../../store';
 
 vi.mock('zustand/traditional');
@@ -22,13 +21,7 @@ vi.mock('swr', () => ({
 beforeAll(() => {
   Object.defineProperty(File.prototype, 'arrayBuffer', {
     value: function () {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result);
-        };
-        reader.readAsArrayBuffer(this);
-      });
+      return new Response(this).arrayBuffer();
     },
     writable: true,
   });

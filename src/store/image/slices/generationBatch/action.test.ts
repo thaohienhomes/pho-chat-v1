@@ -433,8 +433,8 @@ describe('GenerationBatchAction', () => {
 
       vi.mocked(generationBatchService.getGenerationBatches).mockResolvedValue(batches);
 
-      const { result } = renderHook(() => {
-        const store = useImageStore();
+      renderHook(() => {
+        useImageStore();
 
         // Simulate the onSuccess callback behavior directly
         React.useEffect(() => {

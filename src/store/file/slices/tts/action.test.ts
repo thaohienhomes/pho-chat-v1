@@ -18,13 +18,7 @@ vi.mock('swr', () => ({
 beforeAll(() => {
   Object.defineProperty(File.prototype, 'arrayBuffer', {
     value: function () {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result);
-        };
-        reader.readAsArrayBuffer(this);
-      });
+      return new Response(this).arrayBuffer();
     },
     writable: true,
   });
@@ -56,8 +50,6 @@ describe('TTSFileAction', () => {
   it('uploadTTSByArrayBuffers should create a file and call uploadTTSFile', async () => {
     const messageId = 'message-id';
     const arrayBuffers = [new ArrayBuffer(10)];
-    const fileType = 'audio/mp3';
-    const fileName = `${messageId}.mp3`;
 
     // Spy on uploadTTSFile to simulate a successful upload
     const uploadTTSFileSpy = vi

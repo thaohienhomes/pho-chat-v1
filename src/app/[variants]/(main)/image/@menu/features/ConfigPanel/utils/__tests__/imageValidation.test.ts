@@ -7,6 +7,19 @@ import {
   validateImageFiles,
 } from '../imageValidation';
 
+const createMockFile = (name: string = 'test.jpg'): File => {
+  return new File([''], name, { type: 'image/jpeg' });
+};
+
+const createMockFiles = (sizes: number[], names?: string[]): File[] => {
+  return sizes.map((size, index) => {
+    const name = names?.[index] || `file${index}.jpg`;
+    const file = new File([''], name, { type: 'image/jpeg' });
+    Object.defineProperty(file, 'size', { value: size, writable: false });
+    return file;
+  });
+};
+
 describe('imageValidation', () => {
   describe('formatFileSize', () => {
     it('should format 0 bytes correctly', () => {
@@ -64,10 +77,6 @@ describe('imageValidation', () => {
   });
 
   describe('validateImageFileSize', () => {
-    const createMockFile = (name: string = 'test.jpg'): File => {
-      return new File([''], name, { type: 'image/jpeg' });
-    };
-
     beforeEach(() => {
       // Mock File.size property
       Object.defineProperty(File.prototype, 'size', {
@@ -233,15 +242,6 @@ describe('imageValidation', () => {
   });
 
   describe('validateImageFiles', () => {
-    const createMockFiles = (sizes: number[], names?: string[]): File[] => {
-      return sizes.map((size, index) => {
-        const name = names?.[index] || `file${index}.jpg`;
-        const file = new File([''], name, { type: 'image/jpeg' });
-        Object.defineProperty(file, 'size', { value: size, writable: false });
-        return file;
-      });
-    };
-
     it('should pass validation for valid files within all limits', () => {
       const files = createMockFiles([1024 * 1024, 2 * 1024 * 1024]); // 1MB, 2MB
       const constraints = {

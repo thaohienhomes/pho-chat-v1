@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { INBOX_SESSION_ID } from '@/const/session';
 import { DEFAULT_AGENT_CONFIG, DEFAUTT_AGENT_TTS_CONFIG } from '@/const/settings';
@@ -156,7 +156,7 @@ describe('agentSelectors', () => {
       expect(provider).toBe(agentConfig.provider);
     });
 
-    it('should fallback to openrouter if provider is not defined in the agent config', () => {
+    it('should fallback to vertexai if provider is not defined in the agent config', () => {
       const modifiedStore = {
         ...mockSessionStore,
         agentConfig: {
@@ -165,8 +165,8 @@ describe('agentSelectors', () => {
         },
       };
       const provider = agentSelectors.currentAgentModelProvider(modifiedStore);
-      // DEFAULT_PROVIDER is 'openrouter' for pho.chat (free tier uses OpenRouter)
-      expect(provider).toEqual('openrouter');
+      // DEFAULT_PROVIDER is 'vertexai' for pho.chat (primary provider)
+      expect(provider).toEqual('vertexai');
     });
   });
 

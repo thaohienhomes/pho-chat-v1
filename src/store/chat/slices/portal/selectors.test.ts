@@ -5,20 +5,20 @@ import { ChatMessage } from '@/types/message';
 
 import { chatPortalSelectors } from './selectors';
 
+const createState = (overrides?: Partial<ChatStoreState>) => {
+  const state = {
+    activeId: 'test-id',
+    activeTopicId: undefined,
+    messagesMap: {},
+    portalToolMessage: undefined,
+    showPortal: false,
+    ...overrides,
+  } as ChatStoreState;
+
+  return state;
+};
+
 describe('chatDockSelectors', () => {
-  const createState = (overrides?: Partial<ChatStoreState>) => {
-    const state = {
-      activeId: 'test-id',
-      activeTopicId: undefined,
-      messagesMap: {},
-      portalToolMessage: undefined,
-      showPortal: false,
-      ...overrides,
-    } as ChatStoreState;
-
-    return state;
-  };
-
   describe('showDock', () => {
     it('should return the showDock state', () => {
       expect(chatPortalSelectors.showPortal(createState({ showPortal: true }))).toBe(true);

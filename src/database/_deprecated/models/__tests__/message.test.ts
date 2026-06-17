@@ -312,8 +312,8 @@ describe('MessageModel', () => {
   describe('batchDelete', () => {
     it('should batch delete messages by session id', async () => {
       // 创建多条消息以测试批量删除方法
-      const createdMessage1 = await MessageModel.create(messageData);
-      const createdMessage2 = await MessageModel.create(messageData);
+      await MessageModel.create(messageData);
+      await MessageModel.create(messageData);
 
       await MessageModel.batchDelete(messageData.sessionId, undefined);
 
@@ -324,8 +324,8 @@ describe('MessageModel', () => {
 
     it('should batch delete messages by session id and topic id', async () => {
       // 创建多条消息以测试批量删除方法
-      const createdMessage1 = await MessageModel.create(messageData);
-      const createdMessage2 = await MessageModel.create(messageData);
+      await MessageModel.create(messageData);
+      await MessageModel.create(messageData);
 
       await MessageModel.batchDelete(messageData.sessionId, messageData.topicId);
 

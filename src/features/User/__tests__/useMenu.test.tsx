@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ServerConfigStoreProvider } from '@/store/serverConfig/Provider';
@@ -81,7 +82,7 @@ describe('useMenu', () => {
       expect(mainItems?.some((item) => item?.key === 'profile')).toBe(true);
       expect(mainItems?.some((item) => item?.key === 'setting')).toBe(true);
       expect(mainItems?.some((item) => item?.key === 'import')).toBe(true);
-      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(true);
+      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(false);
       expect(logoutItems.some((item) => item?.key === 'logout')).toBe(true);
     });
   });
@@ -99,7 +100,7 @@ describe('useMenu', () => {
       expect(mainItems?.some((item) => item?.key === 'profile')).toBe(true);
       expect(mainItems?.some((item) => item?.key === 'setting')).toBe(true);
       expect(mainItems?.some((item) => item?.key === 'import')).toBe(true);
-      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(true);
+      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(false);
       expect(logoutItems.some((item) => item?.key === 'logout')).toBe(false);
     });
   });
@@ -118,7 +119,7 @@ describe('useMenu', () => {
       expect(mainItems?.some((item) => item?.key === 'setting')).toBe(false);
       expect(mainItems?.some((item) => item?.key === 'import')).toBe(false);
       expect(mainItems?.some((item) => item?.key === 'export')).toBe(false);
-      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(true);
+      expect(mainItems?.some((item) => item?.key === 'changelog')).toBe(false);
       expect(logoutItems.some((item) => item?.key === 'logout')).toBe(false);
     });
   });

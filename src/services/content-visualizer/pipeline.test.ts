@@ -162,7 +162,7 @@ describe('Pipeline Orchestrator', () => {
     it('executes all pipeline stages in order', async () => {
       const input: PipelineInput = { text: 'Some educational content' };
 
-      const result = await runPipeline(input, mockLlm);
+      await runPipeline(input, mockLlm);
 
       expect(runContentIngestion).toHaveBeenCalledTimes(1);
       expect(runConceptAnalyzer).toHaveBeenCalledTimes(1);

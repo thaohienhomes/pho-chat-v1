@@ -21,9 +21,7 @@ function checkReturnsJsx(code: string): string[] {
   const errors: string[] = [];
 
   // Must have a return statement with JSX
-  const hasReturnJsx =
-    /return\s*\([\S\s]*?</.test(code) ||
-    /return\s+</.test(code);
+  const hasReturnJsx = /return\s*\([\S\s]*?</.test(code) || /return\s+</.test(code);
 
   if (!hasReturnJsx) {
     errors.push('Component does not appear to return JSX. Must return React elements.');
@@ -111,7 +109,8 @@ function checkEventHandlers(code: string): string[] {
   const warnings: string[] = [];
 
   // Check for undefined handler references
-  const handlerRefs = code.match(/on(?:Click|MouseEnter|MouseLeave|TouchStart|Change)\s*=\s*{(\w+)}/g) || [];
+  const handlerRefs =
+    code.match(/on(?:Click|MouseEnter|MouseLeave|TouchStart|Change)\s*=\s*{(\w+)}/g) || [];
 
   for (const ref of handlerRefs) {
     const fnName = ref.match(/{(\w+)}/)![1];
@@ -139,8 +138,7 @@ export function validateRender(code: string): RenderTestResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  errors.push(...checkReturnsJsx(code));
-  errors.push(...checkVisibleOutput(code));
+  errors.push(...checkReturnsJsx(code), ...checkVisibleOutput(code));
 
   const runtimeIssues = checkRuntimePatterns(code);
   // First pass: separate real errors from warnings

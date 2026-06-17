@@ -13,7 +13,6 @@ import {
   users,
 } from '@/database/schemas';
 import {
-  ChatMessage,
   ChatMessageError,
   ChatTTS,
   ChatTranslate,
@@ -29,14 +28,6 @@ const topicId = 'topic-id';
 
 // Mock data
 const mockMessageId = 'mock-message-id';
-const mockMessage = {
-  content: 'Mock message content',
-  id: mockMessageId,
-  role: 'user',
-  sessionId,
-} as ChatMessage;
-
-const mockMessages = [mockMessage];
 
 beforeEach(async () => {
   await initializeDB();
@@ -176,7 +167,6 @@ describe('MessageClientService', () => {
   describe('removeMessagesByAssistant', () => {
     it('should batch remove messages by assistantId and topicId', async () => {
       // Setup
-      const assistantId = 'assistant-id';
       const sessionId = 'session-id';
       await clientDB.insert(sessions).values([
         { id: 'bbb', userId },

@@ -27,9 +27,9 @@ vi.stubGlobal(
 
 vi.mock('zustand/traditional');
 vi.mock('@/const/version', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
   return {
-    ...(module as any),
+    ...(mockedModule as any),
     isDesktop: false,
     isServerMode: true,
   };
@@ -86,17 +86,17 @@ vi.mock('@/services/topic', () => ({
   },
 }));
 vi.mock('@/services/chat', async (importOriginal) => {
-  const module = await importOriginal();
+  const mockedModule = await importOriginal();
 
   return {
     chatService: {
       createAssistantMessage: vi.fn(() => Promise.resolve('assistant-message')),
-      createAssistantMessageStream: (module as any).chatService.createAssistantMessageStream,
+      createAssistantMessageStream: (mockedModule as any).chatService.createAssistantMessageStream,
     },
   };
 });
 vi.mock('@/services/session', async (importOriginal) => {
-  const module = await importOriginal();
+  await importOriginal();
 
   return {
     sessionService: {

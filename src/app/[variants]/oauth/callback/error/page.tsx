@@ -37,7 +37,7 @@ const FailedPage = memo(() => {
           subTitle={
             <Flexbox gap={8}>
               {t('error.desc', {
-                reason: t(`error.reason.${reason}` as any, { defaultValue: reason }),
+                reason: t(`error.reason.${reason}` as any, { defaultValue: reason ?? '' }),
               })}
 
               {!!errorMessage && <Highlighter language={'log'}>{errorMessage}</Highlighter>}

@@ -54,11 +54,7 @@ export const useSend = () => {
   const checkGeminiChineseWarning = useGeminiChineseWarning();
 
   // Auth state for checking if user is signed in
-  const [isSignedIn, isLoaded, openLogin] = useUserStore((s) => [
-    s.isSignedIn,
-    s.isLoaded,
-    s.openLogin,
-  ]);
+  const isLoaded = useUserStore((s) => s.isLoaded);
 
   // 使用订阅以保持最新文件列表
   const reactiveFileList = useFileStore(fileChatSelectors.chatUploadFileList);

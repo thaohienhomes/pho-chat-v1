@@ -7,9 +7,10 @@ import { useOnPluginSettingsUpdate } from './pluginSettings';
 describe('useOnPluginSettingsUpdate', () => {
   const mockCallback = vi.fn();
 
+  // The hook removes its own `message` listener on unmount, so the afterEach
+  // only needs to reset the spy.
   afterEach(() => {
     mockCallback.mockReset();
-    window.removeEventListener('message', () => {});
   });
 
   it('calls the callback when a PluginChannel updatePluginSettings message is received', () => {

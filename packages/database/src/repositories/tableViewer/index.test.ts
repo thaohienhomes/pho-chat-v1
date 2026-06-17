@@ -23,7 +23,10 @@ describe('TableViewerRepo', () => {
     it('should return all tables with counts', async () => {
       const result = await repo.getAllTables();
 
-      expect(result.length).toEqual(74);
+      // Count tracks the number of BASE TABLE/VIEW objects created by all client
+      // migrations (packages/database/migrations). Update this when migrations
+      // add or remove tables.
+      expect(result.length).toEqual(77);
       expect(result[0]).toEqual({ name: 'agents', count: 0, type: 'BASE TABLE' });
     });
 

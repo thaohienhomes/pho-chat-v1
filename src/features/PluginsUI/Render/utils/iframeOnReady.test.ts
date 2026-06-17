@@ -7,9 +7,10 @@ import { useOnPluginReadyForInteraction } from './iframeOnReady';
 describe('useOnPluginReadyForInteraction', () => {
   const mockOnReady = vi.fn();
 
+  // The hook removes its own `message` listener on unmount (verified below),
+  // so the afterEach only needs to reset the spy.
   afterEach(() => {
     mockOnReady.mockReset();
-    window.removeEventListener('message', () => {});
   });
 
   it('sets readyForRender to true when a PluginChannel.pluginReadyForRender message is received', async () => {

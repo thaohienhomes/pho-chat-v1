@@ -180,7 +180,10 @@ describe('LLMSettingsSliceAction', () => {
       const enabledProviders = modelProviderSelectors.modelProviderListForModelSelect(
         result.current,
       );
-      expect(enabledProviders).toHaveLength(3);
+      // pho.chat enables `ollama` + `vertexai` by default; `vertexai` is not surfaced
+      // in this list, so the default-enabled provider here is `ollama`, plus the
+      // `perplexity` enabled above (`azure` is explicitly disabled).
+      expect(enabledProviders).toHaveLength(2);
       expect(enabledProviders.at(-1)!.id).toBe('perplexity');
     });
   });
@@ -252,14 +255,17 @@ describe('LLMSettingsSliceAction', () => {
 
     it('should disable the provider', async () => {
       const { result } = renderHook(() => useUserStore());
-      const provider = 'openai';
+      // settings are persisted as a diff against the defaults, so disabling a
+      // provider only shows up in the payload when it is enabled by default.
+      // `ollama` is enabled by default in pho.chat, unlike `openai`.
+      const provider = 'ollama';
 
       await act(async () => {
         await result.current.toggleProviderEnabled(provider, false);
       });
 
       expect(userService.updateUserSettings).toHaveBeenCalledWith(
-        { languageModel: { openai: { enabled: false } } },
+        { languageModel: { ollama: { enabled: false } } },
         expect.any(AbortSignal),
       );
     });

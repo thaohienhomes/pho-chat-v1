@@ -22,7 +22,7 @@ interface ShowWidgetArgs {
  * - show_widget → renders VisualizerRenderer inside an iframe sandbox
  * - visualizer_read_me → silent, returns null (guidelines are consumed by LLM only)
  */
-const VisualizerRender = memo<BuiltinRenderProps>(({ apiName, args, content, messageId }) => {
+const VisualizerRender = memo<BuiltinRenderProps>(({ apiName, args, messageId }) => {
   // visualizer_read_me is silent — no UI
   if (apiName === VisualizerApiNames.visualizerReadMe) {
     return null;

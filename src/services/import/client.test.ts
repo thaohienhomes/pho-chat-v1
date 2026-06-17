@@ -36,8 +36,18 @@ describe('ImporterService', () => {
     it('should import session groups and return correct result', async () => {
       const data: ImporterEntryData = {
         sessionGroups: [
-          { createdAt: 1_715_186_011_586, id: 'group1', name: 'Group 1', updatedAt: 1_715_186_015_053 },
-          { createdAt: 1_715_186_011_586, id: 'group2', name: 'Group 2', updatedAt: 1_715_186_015_053 },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group1',
+            name: 'Group 1',
+            updatedAt: 1_715_186_015_053,
+          },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group2',
+            name: 'Group 2',
+            updatedAt: 1_715_186_015_053,
+          },
         ],
         version: CURRENT_CONFIG_VERSION,
       };
@@ -67,8 +77,18 @@ describe('ImporterService', () => {
 
       const data: ImporterEntryData = {
         sessionGroups: [
-          { createdAt: 1_715_186_011_586, id: 'group1', name: 'Group 1', updatedAt: 1_715_186_015_053 },
-          { createdAt: 1_715_186_011_586, id: 'group2', name: 'Group 2', updatedAt: 1_715_186_015_053 },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group1',
+            name: 'Group 1',
+            updatedAt: 1_715_186_015_053,
+          },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group2',
+            name: 'Group 2',
+            updatedAt: 1_715_186_015_053,
+          },
         ],
         version: CURRENT_CONFIG_VERSION,
       };
@@ -212,8 +232,18 @@ describe('ImporterService', () => {
     it('should associate imported sessions with session groups', async () => {
       const data: ImporterEntryData = {
         sessionGroups: [
-          { createdAt: 1_715_186_011_586, id: 'group1', name: 'Group 1', updatedAt: 1_715_186_015_053 },
-          { createdAt: 1_715_186_011_586, id: 'group2', name: 'Group 2', updatedAt: 1_715_186_015_053 },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group1',
+            name: 'Group 1',
+            updatedAt: 1_715_186_015_053,
+          },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'group2',
+            name: 'Group 2',
+            updatedAt: 1_715_186_015_053,
+          },
         ],
         sessions: [
           {
@@ -367,7 +397,7 @@ describe('ImporterService', () => {
         where: eq(sessions.clientId, 'session1'),
       });
       const session1Agent = await clientDB.query.agentsToSessions.findFirst({
-        where: eq(agentsToSessions.sessionId, session1?.id!),
+        where: eq(agentsToSessions.sessionId, session1!.id),
         with: { agent: true },
       });
 
@@ -377,7 +407,7 @@ describe('ImporterService', () => {
         where: eq(sessions.clientId, 'session2'),
       });
       const session2Agent = await clientDB.query.agentsToSessions.findFirst({
-        where: eq(agentsToSessions.sessionId, session2?.id!),
+        where: eq(agentsToSessions.sessionId, session2!.id),
         with: { agent: true },
       });
 
@@ -524,8 +554,18 @@ describe('ImporterService', () => {
 
       const data: ImporterEntryData = {
         topics: [
-          { createdAt: 1_715_186_011_586, id: 'topic1', title: 'Topic 1', updatedAt: 1_715_186_015_053 },
-          { createdAt: 1_715_186_011_586, id: 'topic2', title: 'Topic 2', updatedAt: 1_715_186_015_053 },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'topic1',
+            title: 'Topic 1',
+            updatedAt: 1_715_186_015_053,
+          },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'topic2',
+            title: 'Topic 2',
+            updatedAt: 1_715_186_015_053,
+          },
         ],
         version: CURRENT_CONFIG_VERSION,
       };
@@ -571,7 +611,12 @@ describe('ImporterService', () => {
             title: 'Topic 1',
             updatedAt: 1_715_186_015_053,
           },
-          { createdAt: 1_715_186_011_586, id: 'topic2', title: 'Topic 2', updatedAt: 1_715_186_015_053 },
+          {
+            createdAt: 1_715_186_011_586,
+            id: 'topic2',
+            title: 'Topic 2',
+            updatedAt: 1_715_186_015_053,
+          },
         ],
         version: CURRENT_CONFIG_VERSION,
       };

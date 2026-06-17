@@ -13,8 +13,8 @@ exports[`agentSelectors > defaultAgentConfig > should merge DEFAULT_AGENT_CONFIG
     "historyCount": 20,
     "reasoningBudgetToken": 1024,
     "searchFCModel": {
-      "model": "openai/gpt-4o-mini",
-      "provider": "openrouter",
+      "model": "gemini-2.5-flash",
+      "provider": "vertexai",
     },
     "searchMode": "off",
   },
@@ -27,7 +27,7 @@ exports[`agentSelectors > defaultAgentConfig > should merge DEFAULT_AGENT_CONFIG
     "top_p": 1,
   },
   "plugins": [],
-  "provider": "openrouter",
+  "provider": "vertexai",
   "systemRole": "user",
   "tts": {
     "showAllLocaleVoice": false,

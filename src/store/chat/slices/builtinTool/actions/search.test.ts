@@ -22,6 +22,14 @@ vi.mock('@/store/chat/selectors', () => ({
   },
 }));
 
+function mockGetMessageById(message: ChatMessage | undefined) {
+  return function getMessageByIdImpl() {
+    return function selectMessage() {
+      return message;
+    };
+  };
+}
+
 describe('search actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,10 +93,14 @@ describe('search actions', () => {
         searchEngines: ['google'],
       });
       expect(result.current.searchLoading[messageId]).toBe(false);
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        JSON.stringify(expectedContent),
-      );
+      // Compare the parsed payload rather than the exact JSON string, so the
+      // assertion does not depend on object key ordering.
+      expect(result.current.internal_updateMessageContent).toHaveBeenCalledTimes(1);
+      const [calledMessageId, calledContent] = (
+        result.current.internal_updateMessageContent as Mock
+      ).mock.calls[0];
+      expect(calledMessageId).toBe(messageId);
+      expect(JSON.parse(calledContent)).toEqual(expectedContent);
     });
 
     it('should handle empty search results and retry with default engine', async () => {
@@ -285,7 +297,7 @@ describe('search actions', () => {
       };
 
       vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(
-        () => () => mockMessage as ChatMessage,
+        mockGetMessageById(mockMessage as ChatMessage),
       );
 
       const { result } = renderHook(() => useChatStore());
@@ -315,7 +327,7 @@ describe('search actions', () => {
     });
 
     it('should not save if message not found', async () => {
-      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(() => () => undefined);
+      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(mockGetMessageById(undefined));
 
       const { result } = renderHook(() => useChatStore());
       const { saveSearchResult } = result.current;

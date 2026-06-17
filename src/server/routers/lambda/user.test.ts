@@ -120,13 +120,22 @@ describe('userRouter', () => {
       const result = await userRouter.createCaller({ ...mockCtx }).getUserState();
 
       expect(result).toEqual({
+        avatar: undefined,
         canEnablePWAGuide: true,
         canEnableTrace: true,
+        email: undefined,
+        firstName: undefined,
+        fullName: undefined,
         hasConversation: true,
         isOnboard: true,
+        lastName: undefined,
+        lifetimeSpent: undefined,
+        phoPointsBalance: undefined,
         preference: { telemetry: true },
         settings: {},
+        subscriptionPlan: 'vn_free',
         userId: mockUserId,
+        username: undefined,
       });
     });
 
@@ -185,13 +194,22 @@ describe('userRouter', () => {
       const result = await userRouter.createCaller({ ...mockCtx } as any).getUserState();
 
       expect(result).toEqual({
+        avatar: undefined,
         canEnablePWAGuide: false,
         canEnableTrace: false,
+        email: undefined,
+        firstName: undefined,
+        fullName: undefined,
         hasConversation: false,
-        isOnboard: true,
+        isOnboard: false,
+        lastName: undefined,
+        lifetimeSpent: undefined,
+        phoPointsBalance: undefined,
         preference: { telemetry: null },
         settings: {},
+        subscriptionPlan: 'vn_free',
         userId: mockUserId,
+        username: undefined,
       });
     });
   });

@@ -29,9 +29,12 @@ CREATE TABLE IF NOT EXISTS user_memories (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
+--> statement-breakpoint
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_user_memories_user_id ON user_memories(user_id);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS idx_user_memories_importance ON user_memories(importance DESC);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS idx_user_memories_user_category ON user_memories(user_id, category);
