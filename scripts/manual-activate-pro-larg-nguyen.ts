@@ -73,11 +73,11 @@ async function main() {
     },
     body: JSON.stringify({
       public_metadata: {
-        planId: PLAN_ID,
         activatedAt: new Date().toISOString(),
         activatedBy: 'admin-manual-sepay-webhook-failure',
-        medical_beta: undefined,
-        planSyncedAt: undefined,
+        medical_beta: false,
+        planId: PLAN_ID,
+        planSyncedAt: Date.now(),
       },
     }),
   });
