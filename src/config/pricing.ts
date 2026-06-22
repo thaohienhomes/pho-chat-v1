@@ -67,7 +67,9 @@ export const VN_PLANS: Record<string, PlanConfig> = {
   medical_beta: {
     advancedAI: true,
     code: 'medical_beta',
-    dailyTier2Limit: -1,
+    // PHO-287 (2026-06): capped at 30 Tier 2 msgs/day to prevent abuse.
+    // Matches PLAN_MODEL_ACCESS.medical_beta.dailyLimits.tier2.
+    dailyTier2Limit: 30,
     // PHO-238: Tier 3 disabled — medical_beta is FREE-tier and was burning $26/hr on flagship models.
     // Defense-in-depth: blocked here, in PLAN_MODEL_ACCESS.allowedTiers, and in dailyCostCaps.ts.
     dailyTier3Limit: 0,
@@ -80,13 +82,13 @@ export const VN_PLANS: Record<string, PlanConfig> = {
     enableKnowledgeBase: true,
     features: [
       '1M Phở Points/tháng',
-      'Unlimited Tier 1 & 2',
+      'Unlimited Tier 1 · 30 Tier 2 msgs/ngày',
       'Tier 3 yêu cầu nâng cấp (Pro/Ultimate)',
       'Scientific Skills không giới hạn',
       'PubMed, ArXiv, Drug Interaction, Clinical Calculator',
       'Research Mode + Deep Research',
     ],
-    keyLimits: 'Unlim Tier 1 & 2. Tier 3 yêu cầu nâng cấp. Medical plugins.',
+    keyLimits: 'Unlim Tier 1. 30 Tier 2 msgs/day. Tier 3 yêu cầu nâng cấp. Medical plugins.',
     monthlyPoints: 1_000_000,
     // 999k VNĐ/year — paid via Sepay/VietQR, activated by promo code
     price: 999_000,

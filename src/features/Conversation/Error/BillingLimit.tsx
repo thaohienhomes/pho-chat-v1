@@ -59,6 +59,7 @@ const getModelAlternatives = (
   blockedTier: number | undefined,
 ): ModelAlternative[] => {
   if (reasonCode === 'TIER_BLOCKED' && blockedTier === 3) {
+    // Tier 3 (MAX/Flagship) is locked — suggest Tier 2 alternatives
     return [
       {
         label: 'Claude Sonnet 4.6',
@@ -81,18 +82,37 @@ const getModelAlternatives = (
     ];
   }
   if (reasonCode === 'DAILY_CAP_EXCEEDED') {
+    if (blockedTier === 3) {
+      // Tier 3 daily cap hit — suggest Tier 2 alternatives
+      return [
+        {
+          label: 'Claude Sonnet 4.6',
+          model: 'anthropic/claude-sonnet-4.6',
+          provider: 'vercelaigateway',
+          reason: 'Chất lượng cao, vẫn dùng được hôm nay',
+        },
+        {
+          label: 'Gemini 2.5 Flash',
+          model: 'google/gemini-2.5-flash',
+          provider: 'vercelaigateway',
+          reason: 'Tốc độ cao, hạn mức rộng hơn',
+        },
+      ];
+    }
+    // Tier 2 daily cap hit — suggest Tier 1 (free/unlimited) alternatives
+    // Do NOT suggest Tier 2 models here: they share the same daily cap that was just exhausted.
     return [
       {
-        label: 'Gemini 2.5 Flash',
-        model: 'google/gemini-2.5-flash',
-        provider: 'vercelaigateway',
-        reason: 'Tốc độ cao, hạn mức rộng hơn',
+        label: 'Phở Pro',
+        model: 'pho-pro',
+        provider: 'groq',
+        reason: 'Không giới hạn hôm nay — dùng tiếp được ngay',
       },
       {
-        label: 'Claude Sonnet 4.6',
-        model: 'anthropic/claude-sonnet-4.6',
-        provider: 'vercelaigateway',
-        reason: 'Chất lượng cao, vẫn dùng được hôm nay',
+        label: 'Phở Fast',
+        model: 'pho-fast',
+        provider: 'groq',
+        reason: 'Tốc độ cao, không giới hạn — cho câu hỏi nhanh',
       },
     ];
   }
