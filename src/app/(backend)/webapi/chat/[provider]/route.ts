@@ -28,7 +28,7 @@ import {
 import { checkDailyCostCap } from '@/server/services/billing/dailyCostAggregation';
 import { getSecondsUntilMidnightVN } from '@/server/services/billing/dailyCostCaps';
 import { phoGatewayService } from '@/server/services/phoGateway';
-import { getUserPlanIdFromDB } from '@/server/services/subscription/getUserPlanFromDB';
+import { getUserPlanFromDB } from '@/server/services/subscription/getUserPlanFromDB';
 import { ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
 import { getTracePayload } from '@/utils/trace';
@@ -437,10 +437,15 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     // ============  2. Tier Access Enforcement   ============ //
     // Check if user's plan allows access to this model tier and daily limits
     let userPlanId = 'vn_free';
+    // PHO-246: capture where the plan resolved from so $ai_generation can expose
+    // `plan_source` (db_subscription / clerk_fallback_soft / ...) for drift audits.
+    let userPlanSource: string | undefined;
     if (jwtPayload.userId) {
       // PHO-241/A1.6: DB is the single source of truth for paid-plan checks.
       // Clerk publicMetadata is display cache only and must never gate authorization.
-      userPlanId = await getUserPlanIdFromDB(jwtPayload.userId);
+      const userPlan = await getUserPlanFromDB(jwtPayload.userId);
+      userPlanId = userPlan.planId;
+      userPlanSource = userPlan.source;
 
       // ============  2.0. Daily Request Cap (Circuit Breaker)  ============ //
       // Prevents single user from burning excessive cost in one day
@@ -827,8 +832,10 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                   model: actualModelUsed,
                   outputTokens,
                   partial: !completed,
-                  // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+                  // PHO-246: forward plan + resolution source from auth check so
+                  // PostHog can slice cost-per-plan and audit DB↔Clerk drift.
                   planId: userPlanId,
+                  planSource: userPlanSource,
                   provider: actualProviderUsed,
                   responseTimeMs,
                 },
@@ -903,8 +910,10 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                 inputTokens,
                 model: actualModelUsed,
                 outputTokens,
-                // PHO-246: forward plan from auth check so PostHog can slice cost-per-plan.
+                // PHO-246: forward plan + resolution source from auth check so
+                // PostHog can slice cost-per-plan and audit DB↔Clerk drift.
                 planId: userPlanId,
+                planSource: userPlanSource,
                 provider: actualProviderUsed,
                 responseTimeMs,
               },

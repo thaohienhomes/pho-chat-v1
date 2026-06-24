@@ -111,6 +111,13 @@ export interface UsageLogParams {
    * capture path falls back to a DB lookup (logs a warning).
    */
   planId?: string;
+  /**
+   * PHO-246: where the plan was resolved from (`db_subscription`,
+   * `db_user_default`, `clerk_fallback_soft`, `fallback_free`). Forwarded to
+   * PostHog `$ai_generation.plan_source` so DB↔Clerk drift is queryable in
+   * telemetry. If omitted, `plan_source` is left unset on the event.
+   */
+  planSource?: string;
   provider: string;
   responseTimeMs?: number;
   sessionId?: string;
@@ -339,6 +346,7 @@ export async function processModelUsage(
         outputTokens: usageLog.outputTokens,
         partial: usageLog.partial,
         planId: usageLog.planId,
+        planSource: usageLog.planSource,
         provider: usageLog.provider,
         tier,
         userId,
