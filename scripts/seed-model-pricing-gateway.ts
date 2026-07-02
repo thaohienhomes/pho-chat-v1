@@ -98,6 +98,11 @@ const SEEDS: PricingSeed[] = [
   { inputUsdPer1M: 0.55, modelId: 'deepseek/deepseek-r1', outputUsdPer1M: 2.19, tier: 2 },
   // Un-prefixed legacy IDs still reach getModelPricing() on some routes.
   { inputUsdPer1M: 0.3, modelId: 'gemini-2.5-flash', outputUsdPer1M: 2.5, tier: 1 },
+  // PHO audit 2026-07-02 (F1): `llama-3.3-70b-versatile` (Groq, the `pho-pro`
+  // backing model) was unseeded, so it billed at the conservative fallback
+  // (31250/250000 pts ≈ $0.31/$2.50 per 1M) — ~10x the real Groq rate. Seed the
+  // exact un-prefixed $ai_model string so the exact-match lookup stops overcharging.
+  { inputUsdPer1M: 0.59, modelId: 'llama-3.3-70b-versatile', outputUsdPer1M: 0.79, tier: 1 },
 
   // ============================================================================
   // Tier 3 — Premium / Expensive tier

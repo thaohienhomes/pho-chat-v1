@@ -99,14 +99,20 @@
 
 ## 6. Hành động 7 ngày tới (tóm tắt cho founder)
 
-| Ưu tiên | Việc | Tác động | Công sức |
-|---|---|---|---|
-| 1 | Tắt/harden SePay compat route | Bịt lỗ giả mạo thanh toán | 0.5d |
-| 2 | Fix Clerk user.deleted constraint | Hết user kẹt nửa-xoá | 0.5d |
-| 3 | Alert khi SePay/Polar activation fail + retry webhook log | Hết sự cố "trả tiền không có gói" âm thầm | 1d |
-| 4 | Seed llama-3.3 + đồng bộ tier gemini | Không tính oan tiền khách | 0.5d |
-| 5 | PHO-290 message rõ ràng khi chạm cap | Giảm ticket support ngay | 1d |
-| 6 | Fix bearer token Discover/MCP | Hết 500 trang public, đỡ hại SEO | 0.5d |
-| 7 | Quyết định cap Opus + PHO-356 | Giảm 30–40% cost user nặng | quyết định + 1d |
+| Ưu tiên | Việc | Tác động | Công sức | Trạng thái |
+|---|---|---|---|---|
+| 1 | Tắt/harden SePay compat route | Bịt lỗ giả mạo thanh toán | 0.5d | ✅ **Fixed (PR này)** — enforce secret fail-closed, mirror route chuẩn |
+| 2 | Fix Clerk user.deleted constraint | Hết user kẹt nửa-xoá | 0.5d | ✅ **Fixed (PR này)** — migration `0048` bỏ NOT NULL trên `global_files.creator` |
+| 3 | Alert khi SePay/Polar activation fail + retry webhook log | Hết sự cố "trả tiền không có gói" âm thầm | 1d | ⏳ Chờ (cần thiết kế alert channel) |
+| 4 | Seed llama-3.3 + đồng bộ tier gemini | Không tính oan tiền khách | 0.5d | ✅ **Seed llama-3.3 (PR này)** — cần chạy `bunx tsx scripts/seed-model-pricing-gateway.ts` trên prod. Gemini tier để founder quyết |
+| 5 | PHO-290 message rõ ràng khi chạm cap | Giảm ticket support ngay | 1d | ⏳ Chờ |
+| 6 | Fix bearer token Discover/MCP | Hết 500 trang public, đỡ hại SEO | 0.5d | ⏳ Chờ (cần env token registry) |
+| 7 | Quyết định cap Opus + PHO-356 | Giảm 30–40% cost user nặng | quyết định + 1d | ⏳ Chờ quyết định business |
 
-Tổng ~5 ngày công cho toàn bộ P0+P1.
+**Đã fix trong PR #77 (docs→code):** mục 1, 2, và phần seed của mục 4. Còn lại cần founder quyết (gemini tier, cap Opus) hoặc setup hạ tầng (alert, env token).
+
+### ⚠️ Bước deploy thủ công sau khi merge
+
+1. **Migration `0048`**: chạy migrate prod (hoặc `ALTER TABLE "global_files" ALTER COLUMN "creator" DROP NOT NULL;` trên Neon Console) để hết vòng lặp Clerk user.deleted.
+2. **Seed giá llama-3.3**: `bunx tsx scripts/seed-model-pricing-gateway.ts` (hoặc chạy `scripts/seed-model-pricing-gateway.sql` trên Neon) để ngừng tính oan.
+3. **SePay**: xác nhận SePay dashboard đang gửi `SEPAY_WEBHOOK_SECRET` (route chuẩn đã yêu cầu secret → nếu prod đang chạy tốt nghĩa là secret ĐÃ được gửi; route compat giờ cùng yêu cầu đó). Nếu SePay chỉ trỏ route compat và chưa gửi secret, phải cấu hình secret TRƯỚC khi deploy để tránh chặn webhook thật.
