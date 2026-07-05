@@ -218,6 +218,25 @@ export class TranslationBatcher {
 
       console.log(`[DocTranslation] Gemini response length: ${text.length} chars`);
 
+      // Observe-only spend telemetry — this path bills the GOOGLE_API_KEY
+      // directly (off-gateway), so it was invisible in every cost dashboard.
+      // Fire-and-forget import keeps the posthog-server chain off the request path.
+      const usage = (response as any).usageMetadata;
+      void import('@/libs/posthog-server')
+        .then(({ captureAiGeneration }) =>
+          captureAiGeneration({
+            costPoints: 0,
+            feature: 'doc-translation',
+            inputTokens:
+              usage?.promptTokenCount ?? Math.ceil((systemPrompt.length + userPrompt.length) / 4),
+            model: 'gemini-2.5-flash',
+            outputTokens: usage?.candidatesTokenCount ?? Math.ceil(text.length / 4),
+            provider: 'google-direct',
+            userId: 'system',
+          }),
+        )
+        .catch(() => {});
+
       const results = parseTranslationResponse(text);
 
       return results.map((result) => {
@@ -290,6 +309,24 @@ export class TranslationBatcher {
       console.warn('[DocTranslation] Empty Gemini REST response');
       return null;
     }
+
+    // Observe-only spend telemetry — direct GOOGLE_API_KEY path (off-gateway).
+    // Fire-and-forget import keeps the posthog-server chain off the request path.
+    const usage = data?.usageMetadata;
+    void import('@/libs/posthog-server')
+      .then(({ captureAiGeneration }) =>
+        captureAiGeneration({
+          costPoints: 0,
+          feature: 'doc-translation',
+          inputTokens:
+            usage?.promptTokenCount ?? Math.ceil(buildBatchPrompt(batchItems).length / 4),
+          model: 'gemini-2.0-flash',
+          outputTokens: usage?.candidatesTokenCount ?? Math.ceil(text.length / 4),
+          provider: 'google-direct',
+          userId: 'system',
+        }),
+      )
+      .catch(() => {});
 
     const results = parseTranslationResponse(text);
 

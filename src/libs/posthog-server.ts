@@ -53,8 +53,20 @@ export interface CaptureAiGenerationParams {
  * legacy callers that should be passing `planId` from their authorization
  * context for free.
  */
+// Reserved distinct-ids used by server-side/system telemetry (doc-translation,
+// vision OCR, ops bots). They are not real users: skip the DB/Clerk plan
+// fallback for them — it would fire 2 DB queries + a Clerk lookup per event,
+// spam the [plan-drift] log channel, and pressure the Clerk rate limit that
+// soft-mode paid-plan resolution depends on (PHO-241).
+const SYNTHETIC_DISTINCT_IDS = new Set(['anonymous', 'system', 'telegram-ops']);
+
 async function emitAiGeneration(params: CaptureAiGenerationParams): Promise<void> {
   let { planId, planSource } = params;
+
+  if (!planId && SYNTHETIC_DISTINCT_IDS.has(params.userId)) {
+    planId = 'system';
+    planSource = 'synthetic';
+  }
 
   if (!planId) {
     try {

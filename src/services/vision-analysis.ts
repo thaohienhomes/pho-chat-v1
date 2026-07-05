@@ -240,31 +240,42 @@ export const VisionAnalysisService = {
   async analyzeImage(
     imageUrl: string,
     options: VisionAnalysisOptions = {},
+    /** Authenticated user id for cost attribution (PostHog + gateway tags). */
+    userId?: string,
   ): Promise<VisionAnalysisResult> {
     const { initModelRuntimeWithUserPayload } = await import('@/server/modules/ModelRuntime');
 
+    const promptChars = buildSystemPrompt(options).length + buildUserPrompt(options).length;
+
     for (const { model, provider } of VISION_MODELS) {
       try {
+        const startAt = Date.now();
         const runtime = await initModelRuntimeWithUserPayload(provider, {});
 
         // Build the chat completion request with image
-        const response = await runtime.chat({
-          messages: [
-            {
-              content: buildSystemPrompt(options),
-              role: 'system',
-            },
-            {
-              content: [
-                { text: buildUserPrompt(options), type: 'text' },
-                { image_url: { detail: 'high', url: imageUrl }, type: 'image_url' },
-              ],
-              role: 'user',
-            },
-          ],
-          model,
-          temperature: 0.2, // Low temperature for structured output
-        });
+        const response = await runtime.chat(
+          {
+            messages: [
+              {
+                content: buildSystemPrompt(options),
+                role: 'system',
+              },
+              {
+                content: [
+                  { text: buildUserPrompt(options), type: 'text' },
+                  { image_url: { detail: 'high', url: imageUrl }, type: 'image_url' },
+                ],
+                role: 'user',
+              },
+            ],
+            model,
+            temperature: 0.2, // Low temperature for structured output
+          },
+          {
+            tags: ['feature:vision'],
+            user: userId,
+          },
+        );
 
         // Extract text from the streaming response
         const text = await streamToText(response);
@@ -273,6 +284,26 @@ export const VisionAnalysisService = {
           console.warn(`[VisionAnalysis] Empty response from ${model}, trying next model`);
           continue;
         }
+
+        // Observe-only spend telemetry (no point deduction yet — cost-audit WS2-2d).
+        // Fire-and-forget import: keeps the posthog-server module chain (DB deps)
+        // off this request's critical path. Token counts are text-only estimates;
+        // image input tokens are NOT included.
+        const latencyMs = Date.now() - startAt;
+        void import('@/libs/posthog-server')
+          .then(({ captureAiGeneration }) =>
+            captureAiGeneration({
+              costPoints: 0,
+              feature: 'vision',
+              inputTokens: Math.ceil(promptChars / 4),
+              latencyMs,
+              model,
+              outputTokens: Math.ceil(text.length / 4),
+              provider,
+              userId: userId || 'anonymous',
+            }),
+          )
+          .catch(() => {});
 
         const data = parseResponse(text);
 

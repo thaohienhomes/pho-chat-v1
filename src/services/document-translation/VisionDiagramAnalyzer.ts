@@ -137,6 +137,8 @@ export class VisionDiagramAnalyzer {
   async analyzeImage(
     imageBase64: string,
     mimeType: string = 'image/png',
+    /** User id for cost attribution when the pipeline has one; defaults to 'system'. */
+    userId?: string,
   ): Promise<{
     context: string;
     diagramType: string;
@@ -146,39 +148,66 @@ export class VisionDiagramAnalyzer {
 
     for (const { model, provider } of VISION_MODELS) {
       try {
+        const startAt = Date.now();
         const runtime = await initModelRuntimeWithUserPayload(provider, {});
 
         const imageUrl = `data:${mimeType};base64,${imageBase64}`;
 
-        const response = await runtime.chat({
-          messages: [
-            {
-              content: buildDiagramOCRPrompt(),
-              role: 'system' as const,
-            },
-            {
-              content: [
-                {
-                  image_url: { detail: 'high', url: imageUrl },
-                  type: 'image_url',
-                },
-                {
-                  text: 'Extract all text from this diagram. Return JSON with the text positions.',
-                  type: 'text',
-                },
-              ] as any,
-              role: 'user' as const,
-            },
-          ],
-          model,
-          temperature: 0.1,
-        });
+        const response = await runtime.chat(
+          {
+            messages: [
+              {
+                content: buildDiagramOCRPrompt(),
+                role: 'system' as const,
+              },
+              {
+                content: [
+                  {
+                    image_url: { detail: 'high', url: imageUrl },
+                    type: 'image_url',
+                  },
+                  {
+                    text: 'Extract all text from this diagram. Return JSON with the text positions.',
+                    type: 'text',
+                  },
+                ] as any,
+                role: 'user' as const,
+              },
+            ],
+            model,
+            temperature: 0.1,
+          },
+          {
+            tags: ['feature:doc-translation-ocr'],
+            user: userId,
+          },
+        );
 
         const text = await streamToText(response);
         if (!text) {
           console.warn(`[VisionDiagram] Empty response from ${model}, trying next`);
           continue;
         }
+
+        // Observe-only spend telemetry (no point deduction yet — cost-audit WS2-2d).
+        // Fire-and-forget import keeps the posthog-server module chain off the
+        // request path. Token counts are text-only estimates; image input tokens
+        // are NOT included.
+        const latencyMs = Date.now() - startAt;
+        void import('@/libs/posthog-server')
+          .then(({ captureAiGeneration }) =>
+            captureAiGeneration({
+              costPoints: 0,
+              feature: 'doc-translation-ocr',
+              inputTokens: Math.ceil(buildDiagramOCRPrompt().length / 4),
+              latencyMs,
+              model,
+              outputTokens: Math.ceil(text.length / 4),
+              provider,
+              userId: userId || 'system',
+            }),
+          )
+          .catch(() => {});
 
         const result = parseOCRResponse(text);
 
