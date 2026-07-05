@@ -229,10 +229,33 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         if (customClient?.createChatCompletionStream) {
           response = customClient.createChatCompletionStream(this.client, payload, this) as any;
         } else {
+          // Vercel AI Gateway cost attribution: forward end-user id + tags into
+          // providerOptions.gateway so the gateway dashboard can split spend by
+          // user/app/feature. Only providers whose handlePayload already sets
+          // providerOptions.gateway (i.e. vercelaigateway) are affected.
+          const gatewayProviderOptions = (postPayload as any).providerOptions?.gateway;
           const finalPayload = {
             ...postPayload,
             messages,
             ...(chatCompletion?.noUserId ? {} : { user: options?.user }),
+            ...(gatewayProviderOptions
+              ? {
+                  providerOptions: {
+                    ...(postPayload as any).providerOptions,
+                    gateway: {
+                      ...gatewayProviderOptions,
+                      ...(options?.user ? { user: options.user } : {}),
+                      ...(options?.tags?.length
+                        ? {
+                            tags: [
+                              ...new Set([...(gatewayProviderOptions.tags ?? []), ...options.tags]),
+                            ],
+                          }
+                        : {}),
+                    },
+                  },
+                }
+              : {}),
             stream_options:
               postPayload.stream && !chatCompletion?.excludeUsage
                 ? { include_usage: true }

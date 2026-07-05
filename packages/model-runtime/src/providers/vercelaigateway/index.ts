@@ -32,6 +32,16 @@ export const LobeVercelAIGatewayAI = createOpenAICompatibleRuntime({
       const { model, reasoning_effort, verbosity, enabledContextCaching = true, ...rest } = payload;
 
       const providerOptions: any = {};
+      // Attach the static cost-attribution tag on SERVER calls only. Gateway
+      // tag/user writes are billed by Vercel's Custom Reporting, and in
+      // client-fetch (BYO-key) mode this handler runs in the user's browser
+      // against THEIR gateway account — never spend their reporting budget or
+      // pollute their dashboard with our app tag. The openaiCompatibleFactory
+      // merges the per-request user id + feature/plan tags into this object
+      // (ChatMethodOptions.user / .tags).
+      if (typeof window === 'undefined') {
+        providerOptions.gateway = { tags: ['app:pho-chat'] };
+      }
       // Enable Vercel AI Gateway automatic prompt caching. The gateway inserts
       // cache_control markers on static prefixes (system prompt + earlier turns)
       // for providers that support it (e.g. Anthropic), and is a no-op otherwise.
@@ -39,7 +49,7 @@ export const LobeVercelAIGatewayAI = createOpenAICompatibleRuntime({
       // Respect the user's context-caching opt-out (defaults on), matching the
       // native anthropic provider's `enabledContextCaching` behaviour.
       if (enabledContextCaching) {
-        providerOptions.gateway = { caching: 'auto' };
+        providerOptions.gateway = { ...providerOptions.gateway, caching: 'auto' };
       }
       if (reasoning_effort || verbosity) {
         providerOptions.openai = {};

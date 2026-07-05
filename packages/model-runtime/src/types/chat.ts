@@ -143,6 +143,11 @@ export interface ChatMethodOptions {
   requestHeaders?: Record<string, any>;
   signal?: AbortSignal;
   /**
+   * cost-attribution tags forwarded to gateway providers that support them
+   * (currently Vercel AI Gateway via providerOptions.gateway.tags)
+   */
+  tags?: string[];
+  /**
    * userId for the chat completion
    */
   user?: string;

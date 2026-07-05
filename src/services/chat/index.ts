@@ -330,7 +330,11 @@ class ChatService {
     const traceHeader = createTraceHeader({ ...options?.trace });
 
     const headers = await createHeaderWithAuth({
-      headers: { 'Content-Type': 'application/json', ...traceHeader },
+      headers: {
+        'Content-Type': 'application/json',
+        ...traceHeader,
+        ...(options?.feature ? { 'x-pho-feature': options.feature } : {}),
+      },
       provider,
     });
 
@@ -413,13 +417,11 @@ class ChatService {
     const pluginEndpoints = bundledApiMap[params.identifier];
     if (pluginEndpoints) {
       // Resolve the correct endpoint for this apiName, fallback to first entry
-      const directApiUrl = pluginEndpoints[params.apiName]
-        || Object.values(pluginEndpoints)[0];
+      const directApiUrl = pluginEndpoints[params.apiName] || Object.values(pluginEndpoints)[0];
 
       // Call the plugin API directly — no gateway proxy needed
-      const args = typeof params.arguments === 'string'
-        ? JSON.parse(params.arguments)
-        : params.arguments;
+      const args =
+        typeof params.arguments === 'string' ? JSON.parse(params.arguments) : params.arguments;
 
       const res = await fetch(directApiUrl, {
         body: JSON.stringify(args),
@@ -491,6 +493,9 @@ class ChatService {
       await this.getChatCompletion(
         { ...params, messages: oaiMessages, tools },
         {
+          // Preset chains (topic title, translation, emoji...) are background
+          // AI spend — label them so billing/PostHog can split them from chat.
+          feature: 'preset-task',
           onErrorHandle: (error) => {
             errorHandle(new Error(error.message), error);
           },

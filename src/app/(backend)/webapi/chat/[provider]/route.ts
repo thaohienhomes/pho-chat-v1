@@ -82,7 +82,10 @@ export const maxDuration = 300;
 // below real flagship cost — every un-seeded model (e.g. claude-sonnet-4.6,
 // $102 real / $0.12 billed over 30 days) was effectively free AND uncapped,
 // because the daily USD cap reads usage_logs.cost_usd derived from these rates.
-const FALLBACK_TIER_PRICING_POINTS: Record<number, { inputCostPer1M: number; outputCostPer1M: number }> = {
+const FALLBACK_TIER_PRICING_POINTS: Record<
+  number,
+  { inputCostPer1M: number; outputCostPer1M: number }
+> = {
   1: { inputCostPer1M: 31_250, outputCostPer1M: 250_000 }, // ~$1.25 / $10 per 1M
   2: { inputCostPer1M: 75_000, outputCostPer1M: 375_000 }, // ~$3 / $15 per 1M
   3: { inputCostPer1M: 125_000, outputCostPer1M: 625_000 }, // ~$5 / $25 per 1M
@@ -564,6 +567,15 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       tierSlotAcquired = tierAccess.slotAcquired || false;
     }
 
+    // Cost-attribution feature label: the client marks background preset tasks
+    // (topic title-gen, translation chains) via `x-pho-feature`. Strict enum
+    // allowlist — anything else falls back to 'chat' — so a client cannot
+    // invent labels (tag-cardinality spam in the gateway report) and can at
+    // worst mislabel its own spend as a known category.
+    const FEATURE_ALLOWLIST = new Set(['chat', 'preset-task']);
+    const rawFeature = req.headers.get('x-pho-feature');
+    const requestFeature = rawFeature && FEATURE_ALLOWLIST.has(rawFeature) ? rawFeature : 'chat';
+
     const tracePayload = getTracePayload(req);
 
     let traceOptions = {};
@@ -643,6 +655,14 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
             model: targetModelId,
           },
           {
+            // Cost-attribution tags for the Vercel AI Gateway dashboard (no-op
+            // for providers that don't support them). Tier is recomputed from
+            // the actual target model so failover/fallback hops stay accurate.
+            tags: [
+              `feature:${requestFeature}`,
+              `plan:${userPlanId}`,
+              `tier:${getModelTier(targetModelId)}`,
+            ],
             user: jwtPayload.userId,
             ...traceOptions,
             signal: req.signal,
@@ -823,6 +843,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                 activePricing.tier || 1,
                 tierSlotAcquired,
                 {
+                  feature: requestFeature,
                   inputTokens,
                   model: actualModelUsed,
                   outputTokens,
@@ -900,6 +921,7 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
               activePricing.tier || 1,
               tierSlotAcquired,
               {
+                feature: requestFeature,
                 inputTokens,
                 model: actualModelUsed,
                 outputTokens,
