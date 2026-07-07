@@ -9,6 +9,7 @@ import { isRtlLang } from 'rtl-detect';
 import Analytics from '@/components/Analytics';
 import { DEFAULT_LANG } from '@/const/locale';
 import { isDesktop } from '@/const/version';
+import MigrationBanner from '@/features/MigrationBanner';
 import PWAInstall from '@/features/PWAInstall';
 import AuthProvider from '@/layout/AuthProvider';
 import GlobalProvider from '@/layout/GlobalProvider';
@@ -96,6 +97,9 @@ const RootLayout = async ({ children, params, modal }: RootLayoutProps) => {
             primaryColor={primaryColor}
             variants={variants}
           >
+            {/* Dismissible migration notice (pho.chat -> v2). Fixed-position top bar
+                so it does not affect the height-locked app shell layout. */}
+            <MigrationBanner />
             <AuthProvider>
               {children}
               {!isMobile && modal}
