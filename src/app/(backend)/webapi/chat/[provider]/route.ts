@@ -366,7 +366,15 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     // ============  0.5. Credit Check (Pre-flight)   ============ //
     // Fetch credit balance once — reuse for both pre-flight and tier access checks
     let prefetchedCreditStatus: Awaited<ReturnType<typeof getUserCreditBalance>> = null;
+    let userPlanIdPromise: Promise<string> | undefined;
     if (jwtPayload.userId) {
+      // Plan lookup is independent of the credit read (and may include a Clerk
+      // network call in soft mode) — start it now, consume it in section 2.
+      // The no-op catch prevents an unhandled rejection if we return before
+      // awaiting (balance block below, body-parse failure); the real error
+      // still surfaces at the `await` in section 2.
+      userPlanIdPromise = getUserPlanIdFromDB(jwtPayload.userId);
+      userPlanIdPromise.catch(() => {});
       prefetchedCreditStatus = await getUserCreditBalance(jwtPayload.userId);
       const balance = prefetchedCreditStatus?.balance || 0;
 
@@ -443,7 +451,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     if (jwtPayload.userId) {
       // PHO-241/A1.6: DB is the single source of truth for paid-plan checks.
       // Clerk publicMetadata is display cache only and must never gate authorization.
-      userPlanId = await getUserPlanIdFromDB(jwtPayload.userId);
+      // (Lookup was started in section 0.5, in parallel with the credit read.)
+      userPlanId = await (userPlanIdPromise ?? getUserPlanIdFromDB(jwtPayload.userId));
 
       // ============  2.0. Daily Request Cap (Circuit Breaker)  ============ //
       // Prevents single user from burning excessive cost in one day
