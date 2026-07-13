@@ -210,10 +210,13 @@ export class SubscriptionService {
 
     // For free plans, check points/usage limits (legacy behavior)
     if (isFreePlan) {
-      const usage = await this.getTrialUsage(userId);
-
-      // Legacy: Check message limit only if TRIAL_CONFIG.maxMessages > 0
+      // Legacy: Check message limit only if TRIAL_CONFIG.maxMessages > 0.
+      // getTrialUsage is an unbounded COUNT/SUM over the user's entire
+      // usage_logs — only pay for it when the limit is actually enforced
+      // (with maxMessages = -1 the result was computed and discarded on
+      // every free-user message, on the pre-first-token hot path).
       if (TRIAL_CONFIG.maxMessages > 0) {
+        const usage = await this.getTrialUsage(userId);
         const messagesRemaining = Math.max(0, TRIAL_CONFIG.maxMessages - usage.messageCount);
 
         if (messagesRemaining <= 0) {
