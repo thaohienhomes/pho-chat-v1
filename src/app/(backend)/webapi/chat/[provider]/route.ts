@@ -592,6 +592,11 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       priorityList,
     );
 
+    // PCFIX-4: TTFT anchor. Stamped BEFORE the provider failover loop so
+    // $ai_ttft_ms covers provider attempts too (post-auth → first token),
+    // and shares one anchor with $ai_latency_ms.
+    const requestStartTime = Date.now();
+
     let lastError: any = null;
     let successfulResponse: Response | null = null;
     let actualProviderUsed = activeProvider;
@@ -741,8 +746,6 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           `Add it to scripts/seed-model-pricing-gateway.ts and re-seed.`,
       );
     }
-
-    const requestStartTime = Date.now();
 
     if (data.stream && response.body) {
       // ── UTF-8 Repair for Anthropic via Vercel AI Gateway ──
