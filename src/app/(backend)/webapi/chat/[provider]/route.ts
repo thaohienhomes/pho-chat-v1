@@ -34,6 +34,9 @@ import { createErrorResponse } from '@/utils/errorResponse';
 import { getTracePayload } from '@/utils/trace';
 
 export const maxDuration = 300;
+// Pin to the same regions as trpc/lambda — Neon lives in aws-ap-southeast-1,
+// so keep the function next to the DB (insurance against default-region drift).
+export const preferredRegion = ['sin1', 'hnd1'];
 
 // TODO: Re-enable when usage tracking is fully implemented
 // async function trackUsageAfterCompletion(params: {
@@ -363,7 +366,15 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     // ============  0.5. Credit Check (Pre-flight)   ============ //
     // Fetch credit balance once — reuse for both pre-flight and tier access checks
     let prefetchedCreditStatus: Awaited<ReturnType<typeof getUserCreditBalance>> = null;
+    let userPlanIdPromise: Promise<string> | undefined;
     if (jwtPayload.userId) {
+      // Plan lookup is independent of the credit read (and may include a Clerk
+      // network call in soft mode) — start it now, consume it in section 2.
+      // The no-op catch prevents an unhandled rejection if we return before
+      // awaiting (balance block below, body-parse failure); the real error
+      // still surfaces at the `await` in section 2.
+      userPlanIdPromise = getUserPlanIdFromDB(jwtPayload.userId);
+      userPlanIdPromise.catch(() => {});
       prefetchedCreditStatus = await getUserCreditBalance(jwtPayload.userId);
       const balance = prefetchedCreditStatus?.balance || 0;
 
@@ -440,7 +451,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     if (jwtPayload.userId) {
       // PHO-241/A1.6: DB is the single source of truth for paid-plan checks.
       // Clerk publicMetadata is display cache only and must never gate authorization.
-      userPlanId = await getUserPlanIdFromDB(jwtPayload.userId);
+      // (Lookup was started in section 0.5, in parallel with the credit read.)
+      userPlanId = await (userPlanIdPromise ?? getUserPlanIdFromDB(jwtPayload.userId));
 
       // ============  2.0. Daily Request Cap (Circuit Breaker)  ============ //
       // Prevents single user from burning excessive cost in one day
@@ -592,6 +604,11 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       priorityList,
     );
 
+    // PCFIX-4: TTFT anchor. Stamped BEFORE the provider failover loop so
+    // $ai_ttft_ms covers provider attempts too (post-auth → first token),
+    // and shares one anchor with $ai_latency_ms.
+    const requestStartTime = Date.now();
+
     let lastError: any = null;
     let successfulResponse: Response | null = null;
     let actualProviderUsed = activeProvider;
@@ -742,8 +759,6 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       );
     }
 
-    const requestStartTime = Date.now();
-
     if (data.stream && response.body) {
       // ── UTF-8 Repair for Anthropic via Vercel AI Gateway ──
       // Pipe through repair stream to fix double-encoded Vietnamese/CJK diacritics
@@ -774,6 +789,9 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       const billingTask = (async () => {
         let accumulatedText = '';
         let completed = false;
+        // PCFIX-4: time-to-first-token. Stamped on the first non-empty chunk so
+        // we can distinguish "stalled before first token" from "long stream".
+        let ttftMs: number | undefined;
 
         try {
           const reader = stream2.getReader();
@@ -782,6 +800,9 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
+            if (ttftMs === undefined && value && value.length > 0) {
+              ttftMs = Date.now() - requestStartTime;
+            }
             accumulatedText += decoder.decode(value, { stream: true });
           }
           completed = true;
@@ -831,6 +852,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
                   planId: userPlanId,
                   provider: actualProviderUsed,
                   responseTimeMs,
+                  // PCFIX-4: TTFT (stream path only). Undefined if no chunk arrived before abort.
+                  ttftMs,
                 },
               );
             }

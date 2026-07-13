@@ -208,25 +208,26 @@ export class SubscriptionService {
       }
     }
 
-    // For free plans, check points/usage limits (legacy behavior)
-    if (isFreePlan) {
+    // For free plans, check points/usage limits (legacy behavior).
+    // Legacy message limit applies only if TRIAL_CONFIG.maxMessages > 0.
+    // getTrialUsage is an unbounded COUNT/SUM over the user's entire
+    // usage_logs — only pay for it when the limit is actually enforced
+    // (with maxMessages = -1 the result was computed and discarded on
+    // every free-user message, on the pre-first-token hot path).
+    if (isFreePlan && TRIAL_CONFIG.maxMessages > 0) {
       const usage = await this.getTrialUsage(userId);
+      const messagesRemaining = Math.max(0, TRIAL_CONFIG.maxMessages - usage.messageCount);
 
-      // Legacy: Check message limit only if TRIAL_CONFIG.maxMessages > 0
-      if (TRIAL_CONFIG.maxMessages > 0) {
-        const messagesRemaining = Math.max(0, TRIAL_CONFIG.maxMessages - usage.messageCount);
-
-        if (messagesRemaining <= 0) {
-          pino.warn({ messagesUsed: usage.messageCount, planCode, userId }, 'Free tier limit reached');
-          return {
-            allowed: false,
-            allowedTiers,
-            isTrialUser: true,
-            messagesRemaining: 0,
-            planCode,
-            reason: 'Bạn đã sử dụng hết quota miễn phí. Nâng cấp để tiếp tục chat với AI.',
-          };
-        }
+      if (messagesRemaining <= 0) {
+        pino.warn({ messagesUsed: usage.messageCount, planCode, userId }, 'Free tier limit reached');
+        return {
+          allowed: false,
+          allowedTiers,
+          isTrialUser: true,
+          messagesRemaining: 0,
+          planCode,
+          reason: 'Bạn đã sử dụng hết quota miễn phí. Nâng cấp để tiếp tục chat với AI.',
+        };
       }
     }
 

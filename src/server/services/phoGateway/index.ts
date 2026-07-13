@@ -143,20 +143,24 @@ class PhoGatewayService {
       ],
     },
 
+    // 2026-07-13: gateway-first for pho-fast/pho-pro. Groq free tier throttles at
+    // 12k/6k TPM (hard 413s reached users, retry-after up to 142s), and Groq llama
+    // pricing is unseeded in model_pricing (bills at conservative fallback).
+    // Groq stays as fallback; requires a positive AI Gateway credit balance.
     'pho-fast': {
       id: 'pho-fast',
       providers: [
+        { modelId: 'google/gemini-2.0-flash', provider: 'vercelaigateway' },
         { modelId: 'llama-3.1-8b-instant', provider: 'groq' },
         { modelId: 'llama3.1-8b', provider: 'cerebras' },
-        { modelId: 'google/gemini-2.0-flash', provider: 'vercelaigateway' },
       ],
     },
 
     'pho-pro': {
       id: 'pho-pro',
       providers: [
-        { modelId: 'llama-3.3-70b-versatile', provider: 'groq' },
         { modelId: 'google/gemini-2.5-flash', provider: 'vercelaigateway' },
+        { modelId: 'llama-3.3-70b-versatile', provider: 'groq' },
       ],
     },
 
