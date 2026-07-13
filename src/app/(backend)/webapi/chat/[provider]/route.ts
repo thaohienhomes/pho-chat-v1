@@ -34,6 +34,9 @@ import { createErrorResponse } from '@/utils/errorResponse';
 import { getTracePayload } from '@/utils/trace';
 
 export const maxDuration = 300;
+// Pin to the same regions as trpc/lambda — Neon lives in aws-ap-southeast-1,
+// so keep the function next to the DB (insurance against default-region drift).
+export const preferredRegion = ['sin1', 'hnd1'];
 
 // TODO: Re-enable when usage tracking is fully implemented
 // async function trackUsageAfterCompletion(params: {
