@@ -26,9 +26,12 @@ export const globalFiles = pgTable('global_files', {
   size: integer('size').notNull(),
   url: text('url').notNull(),
   metadata: jsonb('metadata'),
-  creator: text('creator')
-    .references(() => users.id, { onDelete: 'set null' })
-    .notNull(),
+  // Nullable on purpose: the FK is `ON DELETE SET NULL`, so when the creating
+  // user is deleted the global file is orphaned (kept — it's a shared, hash-keyed
+  // dedup blob) rather than removed. A `.notNull()` here contradicted SET NULL and
+  // aborted every `user.deleted` cascade, leaving users stuck half-deleted and
+  // Clerk retrying the webhook forever.
+  creator: text('creator').references(() => users.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
   accessedAt: accessedAt(),
 });
