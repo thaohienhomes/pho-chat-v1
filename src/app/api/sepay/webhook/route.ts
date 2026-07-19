@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { paymentMetricsCollector } from '@/libs/monitoring/payment-metrics';
 import { SepayWebhookData, sepayGateway } from '@/libs/sepay';
+import { timingSafeCompareStrings } from '@/utils/timingSafeCompare';
 import { addPhoCredits } from '@/server/services/billing/credits';
 import {
   activateUserSubscription,
@@ -279,10 +280,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       '🔔 [COMPAT ROUTE] Webhook received at /api/sepay/webhook from:',
       request.headers.get('user-agent'),
     );
-    console.log(
-      '🔔 [COMPAT ROUTE] Request headers:',
-      Object.fromEntries(request.headers.entries()),
-    );
+
+    // SECURITY CHECK: verify webhook authentication before doing any work.
+    // Mirrors the canonical /api/payment/sepay/webhook route: SePay sends the
+    // shared secret either as `X-Sepay-Webhook-Secret` or `Authorization: Apikey <token>`.
+    // This closes the previous "process even on invalid/missing signature" hole
+    // that let a forged POST activate a paid subscription.
+    const webhookSecret = process.env.SEPAY_WEBHOOK_SECRET;
+
+    let providedSecret = request.headers.get('x-sepay-webhook-secret');
+    if (!providedSecret) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Apikey ')) {
+        providedSecret = authHeader.slice(7);
+      }
+    }
+
+    if (!webhookSecret) {
+      console.error('❌ [COMPAT ROUTE] SEPAY_WEBHOOK_SECRET not configured in environment');
+      return NextResponse.json(
+        { message: 'Webhook authentication not configured', success: false },
+        { status: 500 },
+      );
+    }
+
+    // Constant-time compare; returns false on missing/different-length input,
+    // so it subsumes the `!providedSecret` guard.
+    if (!providedSecret || !timingSafeCompareStrings(providedSecret, webhookSecret)) {
+      console.error('❌ [COMPAT ROUTE] Unauthorized webhook — invalid or missing secret token');
+      paymentMetricsCollector.recordError(
+        'webhook_auth_failed',
+        'Unauthorized webhook request (compat route)',
+        undefined,
+        undefined,
+        { hasSecret: !!providedSecret },
+      );
+      return NextResponse.json(
+        { message: 'Unauthorized - invalid webhook secret', success: false },
+        { status: 401 },
+      );
+    }
 
     // Parse webhook data from Sepay (only parse once!)
     body = await request.json();

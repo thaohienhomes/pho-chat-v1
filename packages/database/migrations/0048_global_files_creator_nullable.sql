@@ -1,0 +1,13 @@
+-- Fix: `global_files.creator` was declared `ON DELETE SET NULL` yet `NOT NULL`.
+--
+-- That self-contradiction aborted every `user.deleted` cascade: Postgres tried
+-- to SET creator = NULL per the FK rule, which violated the NOT NULL constraint,
+-- so the whole `DELETE FROM users` transaction rolled back. Clerk then retried
+-- the webhook indefinitely and the user was left "half-deleted" — gone in Clerk
+-- but still present in Postgres.
+--
+-- Dropping NOT NULL restores the intended semantics: when the creating user is
+-- deleted, the shared (hash-keyed, deduplicated) global file blob is orphaned
+-- and kept, not removed. It is only referenced by `files.file_hash` with
+-- `ON DELETE no action`, so orphaning does not break other users' file rows.
+ALTER TABLE "global_files" ALTER COLUMN "creator" DROP NOT NULL;
