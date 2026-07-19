@@ -124,10 +124,24 @@ export async function POST(req: Request) {
 
     // ── HMAC Signature Verification ────────────────────────────────
     // Polar webhooks use standardwebhooks (svix-compatible) signature format.
-    // SDK's validateEvent both verifies signature AND parses into typed event.
-    // If signature invalid → WebhookVerificationError → reject 403.
-    // If signature valid but event schema unknown to SDK (e.g. older types
-    // like "checkout.completed") → SDKValidationError → fall back to raw parse.
+    // SDK's validateEvent verifies the HMAC signature *first*, then parses the
+    // payload into a typed event:
+    //   • invalid signature            → WebhookVerificationError → reject 403
+    //   • valid signature, but the SDK
+    //     doesn't model the event type  → SDKValidationError (signature already OK)
+    // Because verification happens before schema parsing, an SDKValidationError
+    // means the signature was VALID and we just can't type the event (e.g. a newer
+    // Polar type like "member.created" that the pinned @polar-sh/sdk doesn't know).
+    // We recover the event from the already-verified raw body and continue, so
+    // recognized payment events are still handled and unrecognized ones fall through
+    // to the 200 acknowledgement below.
+    //
+    // NOTE: PHO-250/A1.14 previously returned 401 for this case, treating a
+    // valid-signature event as a signature failure. That misclassification made
+    // Polar assume delivery failed and retry indefinitely (error-tracking noise for
+    // non-payment events like member.created). The security concern behind PHO-250 —
+    // "raw body parsed before the signature is confirmed" — does not apply: the raw
+    // body is only trusted here *after* validateEvent has verified the signature.
     const webhookSecret = process.env.POLAR_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error('[Polar Webhook] POLAR_WEBHOOK_SECRET not configured');
@@ -142,15 +156,31 @@ export async function POST(req: Request) {
         console.error('[Polar Webhook] Invalid signature:', verifyErr.message);
         return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
       }
-      // PHO-250/A1.14: Reject every non-verified error. The previous fallback parsed
-      // the raw body on SDKValidationError, which could process events whose signature
-      // had not been confirmed before schema validation. If a new Polar event type
-      // legitimately fails SDK schema, upgrade @polar-sh/sdk instead of trusting raw body.
-      console.error('[Polar Webhook] Signature validation failed (PHO-250/A1.14):', {
+
+      // Only fall back to the raw body for schema-parsing failures, which the SDK
+      // raises *after* the signature has been verified. Any other error type happens
+      // before the signature is confirmed, so we must not trust the body — reject it.
+      const isSchemaError = verifyErr?.name === 'SDKValidationError';
+      if (!isSchemaError) {
+        console.error('[Polar Webhook] Signature validation failed:', {
+          error: verifyErr instanceof Error ? verifyErr.message : String(verifyErr),
+          errorType: verifyErr?.constructor?.name,
+        });
+        return NextResponse.json({ error: 'WEBHOOK_SIGNATURE_INVALID' }, { status: 401 });
+      }
+
+      console.warn('[Polar Webhook] Signature valid but event type not modeled by SDK; ' +
+        'continuing with verified raw payload:', {
         error: verifyErr instanceof Error ? verifyErr.message : String(verifyErr),
         errorType: verifyErr?.constructor?.name,
       });
-      return NextResponse.json({ error: 'WEBHOOK_SIGNATURE_INVALID' }, { status: 401 });
+      try {
+        event = JSON.parse(body);
+      } catch {
+        // A signature-verified Polar delivery should always be valid JSON; guard anyway.
+        console.error('[Polar Webhook] Verified payload was not valid JSON');
+        return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+      }
     }
 
     console.log('📥 Polar Webhook Event:', {
