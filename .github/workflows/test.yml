@@ -6,6 +6,35 @@ permissions:
   contents: read
 
 jobs:
+  # Standalone lint gate — decoupled from the Test Database job (PHO-276) so the DB
+  # tests get real signal instead of being skipped behind a failing lint step.
+  # Allowed to be red as tracked tech-debt until the baseline ESLint errors are
+  # cleaned; as its own job it does not mask any other job's result.
+  lint:
+    name: Lint
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun i
+
+      - name: Lint
+        run: bun run lint
+
   # Package tests - using each package's own test script
   test-intenral-packages:
     runs-on: ubuntu-latest
@@ -153,9 +182,6 @@ jobs:
 
       - name: Install deps
         run: bun i
-
-      - name: Lint
-        run: bun run lint
 
       - name: Test Client DB
         run: bun run --filter @lobechat/database test:client-db
